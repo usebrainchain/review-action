@@ -67,8 +67,9 @@ export function preset(network: string, payOn: string): Preset {
 export function units(amount: string): bigint {
   const match = /^(\d{1,6})(?:\.(\d{1,6}))?$/.exec(amount.trim());
   if (!match) throw new Error(`max-price must be an amount such as 1 or 2.5, not "${amount}".`);
-  const value = BigInt(match[1]!) * 1_000_000n + BigInt((match[2] ?? "").padEnd(6, "0"));
+  const value = BigInt(match[1]!) * 1_000_000n + BigInt((match[2] ?? "").padStart(6, "0"));
   if (value === 0n) throw new Error("max-price must be above zero.");
+  if (value > 100_000_000n) throw new Error("max-price must be at most 100.");
   return value;
 }
 
