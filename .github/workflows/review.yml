@@ -1,4 +1,4 @@
-# Reviews this repository's own pull requests on BrainChain testnet, paid in test USDC on Base Sepolia.
+# Reviews this repository's own pull requests on BrainChain mainnet, paid in USDC on Base.
 name: Review
 on:
   pull_request:
@@ -15,5 +15,4 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./
         with:
-          payer-key: ${{ secrets.BRAINCHAIN_TESTNET_PAYER_KEY }}
-          network: testnet
+          payer-key: ${{ secrets.BRAINCHAIN_PAYER_KEY }}
