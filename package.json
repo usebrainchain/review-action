@@ -2,7 +2,7 @@
   "name": "brainchain-review-action",
   "private": true,
   "version": "1.4.0",
-  "description": "GitHub Action: BrainChain reviews each pull request, and you pay only for a review Jev accepts.",
+  "description": "Review each pull request with a frontier model, and pay only for a review that passes Jev's grade.",
   "license": "MIT",
   "type": "module",
   "scripts": {

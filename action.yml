@@ -7,7 +7,7 @@ branding:
 
 inputs:
   payer-key:
-    description: Private key of the wallet that pays for reviews. Store it as a repository secret and keep only what you plan to spend in it.
+    description: Private key of the wallet that pays for reviews, from a repository secret. Fund that wallet with only what you plan to spend.
     required: true
   pay-on:
     description: "base pays in USDC on Base with a signature alone; robinhood pays in USDG on Robinhood Chain after a one-time Permit2 approval."
@@ -19,22 +19,22 @@ inputs:
     description: The most one review may cost, in USDC or USDG. The wallet must hold at least this much.
     default: "1"
   wait-minutes:
-    description: Minutes to wait for the graded review, from 1 to 300. The order keeps running either way.
+    description: Minutes to wait for the graded review, from 1 to 300, counted from when the action starts. The order keeps running either way.
     default: "20"
   review-bots:
     description: "true also reviews pull requests opened by bots, such as Dependabot."
     default: "false"
   github-token:
-    description: Token used to read the diff and post the review. Needs pull-requests write.
+    description: "Token that reads the diff and posts the review. Needs pull-requests: write, and contents: read for wider context."
     default: ${{ github.token }}
 
 outputs:
   order:
-    description: The BrainChain order id.
+    description: The BrainChain order id, set once paid, when a re-run waits on a paid order, or when the commit already has a review. Also set when the job stops waiting.
   task-id:
-    description: The task's id on BrainChain.
+    description: The task's id on BrainChain, set once the task is posted, including when the job stops waiting after that.
   accepted:
-    description: true once an accepted review is posted, false when Jev did not accept it. Empty when the job stops waiting first or skips the pull request.
+    description: true once an accepted review is posted, or when the commit already has one; false when Jev did not accept it. Empty when the job stops waiting first or skips the pull request for any other reason.
 
 runs:
   using: node24

@@ -2,7 +2,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 import { keccak256, toBytes, type PrivateKeyAccount } from "viem";
 
-import type { Preset } from "./presets.js";
+import { amount, type Preset } from "./presets.js";
 
 const MAX_TIMEOUT_SECONDS = 600;
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -25,6 +25,7 @@ export interface Posted {
 export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice: bigint, brief: Brief, fetchImpl: typeof fetch = fetch): Promise<Posted> {
   let signed: { payload: unknown } | undefined;
   let price = maxPrice;
+  let asked: bigint | undefined;
   const client = x402Client.fromConfig({
     schemes: [{ network: preset.network, client: new ExactEvmScheme(account) }],
     spendControls: { allowedAssets: [{ network: preset.network, asset: preset.asset, maxAmountPerPayment: maxPrice.toString() }] },
@@ -40,9 +41,15 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
     signed = paymentPayload;
   });
 
+  // The price is read off the 402 challenge: x402 refuses a price above max-price without saying what it was.
+  const observed: typeof fetch = async (input, init) => {
+    const reply = await fetchImpl(input, init);
+    if (reply.status === 402) asked = challengePrice(reply, preset);
+    return reply;
+  };
   let response: Response;
   try {
-    response = await wrapFetchWithPayment(fetchImpl, client)(`${preset.desk}/x402/tasks`, {
+    response = await wrapFetchWithPayment(observed, client)(`${preset.desk}/x402/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(brief),
@@ -50,7 +57,7 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
     });
   } catch (error) {
     if (signed) return { order: orderId(signed), price, uncertain: true };
-    throw new Error(`${explain(error, preset)} Nothing was charged.`, { cause: error });
+    throw new Error(`${explain(error, preset, maxPrice, asked)} Nothing was charged.`, { cause: error });
   }
 
   const reply = (await response.json().catch(() => ({}))) as { order?: unknown; error?: unknown };
@@ -62,15 +69,30 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
   if (signed && response.status !== 400 && response.status !== 402) return { order: order ?? orderId(signed), price, uncertain: true };
   const error = typeof reply.error === "string" ? reply.error : undefined;
   // A brief within 32,000 characters can still pass 64,000 bytes once encoded: non-ASCII text and escapes grow it.
-  if (response.status === 400 && error && /too large to post/i.test(error)) throw new Error("The desk refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
-  throw new Error(`${error ?? `The desk answered ${response.status}.`} Nothing was charged.`);
+  if (response.status === 400 && error && /too large to post/i.test(error)) throw new Error("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+  throw new Error(`${error ?? `BrainChain answered ${response.status}.`} Nothing was charged.`);
 }
 
-function explain(error: unknown, preset: Preset): string {
+/** What the desk's 402 challenge asks in this preset's token, if it can be read. */
+function challengePrice(response: Response, preset: Preset): bigint | undefined {
+  try {
+    const challenge = JSON.parse(Buffer.from(response.headers.get("payment-required") ?? "", "base64").toString("utf8")) as { accepts?: { network?: string; asset?: string; payTo?: string; amount?: string }[] };
+    const terms = challenge.accepts?.find((a) => a.network === preset.network && same(a.asset ?? "", preset.asset) && same(a.payTo ?? "", preset.payTo));
+    return terms?.amount && /^\d+$/.test(terms.amount) ? BigInt(terms.amount) : undefined;
+  } catch {
+    // An unreadable challenge only means the error cannot name the price.
+    return undefined;
+  }
+}
+
+function explain(error: unknown, preset: Preset, maxPrice: bigint, asked?: bigint): string {
   const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
-  if (/rejected by spendControls/.test(message)) return `The desk asked more than max-price, or in a token other than ${preset.token}.`;
-  if (/filtered out by policies|No network\/scheme registered/.test(message)) return `The desk did not offer ${preset.token} on ${preset.chain} on the terms this action accepts.`;
-  return `The payment could not be made: ${message}.`;
+  if (asked !== undefined && asked > maxPrice) {
+    return `BrainChain charges ${amount(asked)} ${preset.token} per review, above max-price ${amount(maxPrice)}. Set max-price to at least ${amount(asked)}.`;
+  }
+  if (/rejected by spendControls.*maxAmountPerPayment/.test(message)) return `BrainChain charges more per review than max-price ${amount(maxPrice)}. Raise max-price.`;
+  if (/rejected by spendControls|filtered out by policies|No network\/scheme registered/.test(message)) return `BrainChain did not offer ${preset.token} on ${preset.chain} on the terms this action accepts.`;
+  return `The payment could not be made: ${message.replace(/\.$/, "")}.`;
 }
 
 /** The desk names an order after the hash of the signed payment: sorted keys, no whitespace. */
@@ -103,7 +125,6 @@ interface OrderView {
   result?: string;
 }
 
-/** Reads an order once and says where it stands. */
 export async function check(preset: Preset, order: string, fetchImpl: typeof fetch = fetch): Promise<Outcome> {
   const response = await fetchImpl(`${preset.desk}/x402/tasks/${order}`, { signal: AbortSignal.timeout(20_000) });
   if (response.status === 404) return { kind: "waiting", state: "unknown" };

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comment, commenter, diff, ownComment } from "./github.js";
+import { comment, commenter, diff, fileAt, ownComment, remove } from "./github.js";
 
 const MARKER = "<!-- brainchain-review -->";
 
@@ -80,5 +80,31 @@ describe("diff", () => {
     expect(await diff("t", "acme/api", 3)).toBeUndefined();
     github({ GET: () => new Response("down", { status: 502 }) });
     await expect(diff("t", "acme/api", 3)).rejects.toThrow(/GitHub answered 502/);
+  });
+});
+
+describe("remove", () => {
+  it("deletes the comment, and needs nothing when it is already gone", async () => {
+    const calls = github({ DELETE: () => new Response(null, { status: 204 }) });
+    await remove("t", "acme/api", 7);
+    expect(calls).toEqual([{ method: "DELETE", url: "https://api.github.com/repos/acme/api/issues/comments/7" }]);
+    github({ DELETE: () => new Response("Not Found", { status: 404 }) });
+    await remove("t", "acme/api", 7);
+    github({ DELETE: () => new Response("down", { status: 502 }) });
+    await expect(remove("t", "acme/api", 7)).rejects.toThrow(/GitHub answered 502/);
+  });
+});
+
+describe("fileAt", () => {
+  it("reads a file's raw text at a commit, or gives undefined", async () => {
+    let asked: { url: string; accept: string | null } | undefined;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
+      asked = { url, accept: new Headers(init.headers).get("accept") };
+      return new Response("const a = 1;\n");
+    });
+    expect(await fileAt("t", "acme/api", "src/my file.ts", "abc")).toBe("const a = 1;\n");
+    expect(asked).toEqual({ url: "https://api.github.com/repos/acme/api/contents/src/my%20file.ts?ref=abc", accept: "application/vnd.github.raw" });
+    github({ GET: () => new Response("Not Found", { status: 404 }) });
+    expect(await fileAt("t", "acme/api", "gone.ts", "abc")).toBeUndefined();
   });
 });

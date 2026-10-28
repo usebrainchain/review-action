@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { check, orderId, post } from "./desk.js";
 import { amount, preset, units } from "./presets.js";
-import { MARKER, neutralize, paidFor, reviewComment, reviewedCommit, statusComment } from "./review.js";
+import { MARKER, neutralize, paidFor, recordedCommit, reviewComment, reviewedCommit, shownReview, statusComment } from "./review.js";
 
 // Anvil's second default account: a public test key that holds nothing anywhere.
 const account = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
@@ -59,7 +59,7 @@ describe("post", () => {
 
   it("prints a desk error that is not a string as the status", async () => {
     const { fetchImpl } = desk({}, () => Response.json({ error: { code: 1 } }, { status: 400 }));
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("The desk answered 400. Nothing was charged.");
+    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("BrainChain answered 400. Nothing was charged.");
   });
 
   it("reports a refused brief as uncharged", async () => {
@@ -67,9 +67,24 @@ describe("post", () => {
     await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("brief must be 1 to 32,000 characters. Nothing was charged.");
   });
 
+  it("names the desk's price when it is above max-price", async () => {
+    const { fetchImpl, seen } = desk({ amount: "2500000" });
+    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow(
+      "BrainChain charges 2.5 test USDC per review, above max-price 1. Set max-price to at least 2.5. Nothing was charged.",
+    );
+    expect(seen).toHaveLength(0);
+  });
+
   it("says plainly when the desk finds the brief too large to post", async () => {
     const { fetchImpl } = desk({}, () => Response.json({ error: "Task JSON is too large to post." }, { status: 400 }));
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("The desk refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+  });
+
+  it("ends a payment error with one period", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("Connection reset.");
+    }) as typeof fetch;
+    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow(/^The payment could not be made: Connection reset\. Nothing was charged\.$/);
   });
 
   it("keeps the network error as the cause when nothing was signed", async () => {
@@ -136,7 +151,8 @@ describe("reviewComment", () => {
     const text = reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "9", review: "  No defects found.  " });
     expect(text).toContain("<!-- brainchain-review -->\n### BrainChain review\n\nNo defects found.\n");
     expect(text).toContain("the model earns 0.97 USDC");
-    expect(text).toContain("[task #9](https://usebrainchain.com/task?id=9)");
+    expect(text).toContain("see [task 9](https://usebrainchain.com/task?id=9).");
+    expect(text).not.toMatch(/#\d/);
     expect(reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", review: "ok" }, "abcdef1234")).toContain("Reviewed at abcdef1.");
   });
 });
@@ -155,6 +171,19 @@ describe("neutralize", () => {
     const long = neutralize("a".repeat(70_000));
     expect(long.length).toBeLessThan(61_000);
     expect(long).toMatch(/was cut here\.\]$/);
+  });
+});
+
+describe("neutralize links and headings", () => {
+  it("stops #12 linking an issue in the reviewed repository, outside code only", () => {
+    expect(neutralize("See #12, (#3) and #7.\n`#12` &#39; https://x.dev/a#12 acme/api#4")).toBe("See #\u200b12, (#\u200b3) and #\u200b7.\n`#12` &#39; https://x.dev/a#12 acme/api#4");
+    expect(neutralize("```\n#12\n```")).toBe("```\n#12\n```");
+  });
+
+  it("puts every heading under the comment's own", () => {
+    expect(neutralize("# One\n## Two\n### Three\n#### Four\n##### Five\n#No")).toBe("#### One\n#### Two\n#### Three\n#### Four\n##### Five\n#No");
+    expect(neutralize("Title\n===\nSection\n---\nText\n\n---\n- item\n---")).toBe("#### Title\n\n#### Section\n\nText\n\n---\n- item\n---");
+    expect(neutralize("```md\n# Kept\nText\n---\n```")).toBe("```md\n# Kept\nText\n---\n```");
   });
 });
 
@@ -207,10 +236,26 @@ describe("payment record", () => {
 
   it("is written under the marker and read back", () => {
     const body = statusComment("BrainChain is reviewing fffffff.", paid);
-    expect(body.startsWith(`${MARKER}\n<!-- brainchain order=`)).toBe(true);
+    expect(body.startsWith(`${MARKER}\n<!-- brainchain commit=${paid.commit} order=`)).toBe(true);
     expect(paidFor(body)).toEqual(paid);
     expect(paidFor(reviewComment(preset("mainnet", "base"), { ...paid, uncertain: false }, { kind: "accepted", review: "ok" }, paid.commit))).toEqual(paid);
-    expect(paidFor(statusComment("BrainChain is reviewing fffffff."))).toBeUndefined();
+  });
+
+  it("names the commit before anything is paid", () => {
+    const pending = statusComment("BrainChain is reviewing fffffff.", { commit: paid.commit });
+    expect(paidFor(pending)).toBeUndefined();
+    expect(recordedCommit(pending)).toBe(paid.commit);
+  });
+
+  it("keeps an earlier review below a status, exactly as it was", () => {
+    const earlier = reviewComment(preset("mainnet", "base"), { ...paid, uncertain: false }, { kind: "accepted", taskId: "2", review: "Fine.\n```\n<!-- brainchain-earlier -->\n```" }, "e".repeat(40));
+    const body = statusComment("BrainChain is reviewing fffffff.", paid, earlier);
+    expect(shownReview(body)).toBe(earlier);
+    expect(shownReview(statusComment("x", paid, shownReview(body)))).toBe(earlier);
+    expect(paidFor(body)).toEqual(paid);
+    expect(recordedCommit(body)).toBe(paid.commit);
+    expect(shownReview(earlier)).toBe(earlier);
+    expect(shownReview(statusComment("x", paid))).toBeUndefined();
   });
 
   it("cannot be forged by a review that quotes one", () => {

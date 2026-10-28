@@ -76,7 +76,6 @@ export async function ownComment(token: string, repo: string, number: number, lo
   return newest;
 }
 
-/** Writes over this action's earlier comment, or posts a new one when there is none or it is gone. */
 export async function comment(token: string, repo: string, number: number, body: string, earlier?: { id: number }): Promise<IssueComment> {
   if (earlier) {
     try {
@@ -87,4 +86,21 @@ export async function comment(token: string, repo: string, number: number, body:
     }
   }
   return (await (await call(token, `/repos/${repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) })).json()) as IssueComment;
+}
+
+export async function remove(token: string, repo: string, id: number): Promise<void> {
+  try {
+    await call(token, `/repos/${repo}/issues/comments/${id}`, { method: "DELETE" });
+  } catch (error) {
+    if (!(error instanceof GitHubError) || error.status !== 404) throw error;
+  }
+}
+
+/** A file's text at a commit, or undefined when it cannot be read: the brief then keeps the diff's own context. */
+export async function fileAt(token: string, repo: string, path: string, ref: string): Promise<string | undefined> {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return call(token, `/repos/${repo}/contents/${encoded}?ref=${ref}`, { accept: "application/vnd.github.raw" }).then(
+    (response) => response.text(),
+    () => undefined,
+  );
 }
