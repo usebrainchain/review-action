@@ -122,7 +122,7 @@ export function reviewedCommit(body: string): string | undefined {
 export function reviewComment(preset: Preset, posted: Posted, outcome: Extract<Outcome, { kind: "accepted" }>, commit?: string): string {
   const paid = amount((posted.price * (10_000n - FEE_BPS)) / 10_000n);
   // "task #12" would link issue 12 of the reviewed repository.
-  const task = outcome.taskId ? (preset.taskPage ? `[task ${outcome.taskId}](${preset.taskPage(outcome.taskId)})` : `task ${outcome.taskId}`) : "its task";
+  const task = !outcome.taskId ? "" : preset.taskPage ? `; see [task ${outcome.taskId}](${preset.taskPage(outcome.taskId)})` : `; BrainChain task ${outcome.taskId}`;
   return [
     MARKER,
     ...(commit ? [recordLine({ order: posted.order, commit, price: posted.price })] : []),
@@ -131,6 +131,6 @@ export function reviewComment(preset: Preset, posted: Posted, outcome: Extract<O
     neutralize(outcome.review.trim()),
     "",
     "---",
-    `<sub>Reviewed through [BrainChain](https://usebrainchain.com). Jev, a decision model from TypeSafe, hired the model and accepted this review, so the model earns ${paid} ${preset.token}. Paid ${amount(posted.price)} ${preset.token} on ${preset.chain}; see ${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`,
+    `<sub>Reviewed through [BrainChain](https://usebrainchain.com). Jev, a decision model from TypeSafe, hired the model and accepted this review, so the model earns ${paid} ${preset.token}. Paid ${amount(posted.price)} ${preset.token} on ${preset.chain}${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`,
   ].join("\n");
 }

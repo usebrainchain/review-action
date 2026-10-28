@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 import { keccak256, toBytes, type PrivateKeyAccount } from "viem";
@@ -57,7 +58,12 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
     });
   } catch (error) {
     if (signed) return { order: orderId(signed), price, uncertain: true };
-    throw new Error(`${explain(error, preset, maxPrice, asked)} Nothing was charged.`, { cause: error });
+    const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
+    // x402's own wording names its settings, not this action's inputs, so it goes to the debug log only.
+    core.debug(`x402: ${message}`);
+    const refused = refusal(message, preset, maxPrice, asked);
+    if (refused) throw new Error(`${refused} Nothing was charged.`);
+    throw new Error(`The payment could not be made: ${message.replace(/\.$/, "")}. Nothing was charged.`, { cause: error });
   }
 
   const reply = (await response.json().catch(() => ({}))) as { order?: unknown; error?: unknown };
@@ -73,26 +79,45 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
   throw new Error(`${error ?? `BrainChain answered ${response.status}.`} Nothing was charged.`);
 }
 
-/** What the desk's 402 challenge asks in this preset's token, if it can be read. */
+/** The price in this preset's token among a desk offer's terms, as both the 402 challenge and GET /x402/tasks list them. */
+function priceIn(offer: unknown, preset: Preset): bigint | undefined {
+  const accepts = (offer as { accepts?: unknown } | null | undefined)?.accepts;
+  if (!Array.isArray(accepts)) return undefined;
+  const terms = (accepts as { network?: string; asset?: string; payTo?: string; amount?: unknown }[]).find(
+    (a) => a.network === preset.network && same(a.asset ?? "", preset.asset) && same(a.payTo ?? "", preset.payTo),
+  );
+  return typeof terms?.amount === "string" && /^\d+$/.test(terms.amount) ? BigInt(terms.amount) : undefined;
+}
+
 function challengePrice(response: Response, preset: Preset): bigint | undefined {
   try {
-    const challenge = JSON.parse(Buffer.from(response.headers.get("payment-required") ?? "", "base64").toString("utf8")) as { accepts?: { network?: string; asset?: string; payTo?: string; amount?: string }[] };
-    const terms = challenge.accepts?.find((a) => a.network === preset.network && same(a.asset ?? "", preset.asset) && same(a.payTo ?? "", preset.payTo));
-    return terms?.amount && /^\d+$/.test(terms.amount) ? BigInt(terms.amount) : undefined;
+    return priceIn(JSON.parse(Buffer.from(response.headers.get("payment-required") ?? "", "base64").toString("utf8")), preset);
   } catch {
     // An unreadable challenge only means the error cannot name the price.
     return undefined;
   }
 }
 
-function explain(error: unknown, preset: Preset, maxPrice: bigint, asked?: bigint): string {
-  const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
-  if (asked !== undefined && asked > maxPrice) {
-    return `BrainChain charges ${amount(asked)} ${preset.token} per review, above max-price ${amount(maxPrice)}. Set max-price to at least ${amount(asked)}.`;
+/** The desk's price in this preset's token, read without paying, or undefined when it cannot be read. */
+export async function quote(preset: Preset, fetchImpl: typeof fetch = fetch): Promise<bigint | undefined> {
+  try {
+    const response = await fetchImpl(`${preset.desk}/x402/tasks`, { signal: AbortSignal.timeout(15_000) });
+    return response.ok ? priceIn(await response.json(), preset) : undefined;
+  } catch {
+    // Without a quote, x402 still refuses a price above max-price; only the early refusal is lost.
+    return undefined;
   }
+}
+
+export const overPrice = (preset: Preset, asked: bigint, maxPrice: bigint) =>
+  `BrainChain charges ${amount(asked)} ${preset.token} per review, above max-price ${amount(maxPrice)}. Set max-price to at least ${amount(asked)}.`;
+
+/** Why x402 refused to pay, in this action's terms; undefined for any other error. */
+function refusal(message: string, preset: Preset, maxPrice: bigint, asked?: bigint): string | undefined {
+  if (asked !== undefined && asked > maxPrice) return overPrice(preset, asked, maxPrice);
   if (/rejected by spendControls.*maxAmountPerPayment/.test(message)) return `BrainChain charges more per review than max-price ${amount(maxPrice)}. Raise max-price.`;
   if (/rejected by spendControls|filtered out by policies|No network\/scheme registered/.test(message)) return `BrainChain did not offer ${preset.token} on ${preset.chain} on the terms this action accepts.`;
-  return `The payment could not be made: ${message.replace(/\.$/, "")}.`;
+  return undefined;
 }
 
 /** The desk names an order after the hash of the signed payment: sorted keys, no whitespace. */

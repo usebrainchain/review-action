@@ -5,7 +5,7 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { buildBrief } from "./brief.js";
-import { check, post, type Outcome, type Posted } from "./desk.js";
+import { check, overPrice, post, quote, type Outcome, type Posted } from "./desk.js";
 import { comment, commenter, diff, fileAt, ownComment, pullRequest, remove, type IssueComment } from "./github.js";
 import { amount, PERMIT2, preset as presetFor, units, type Preset } from "./presets.js";
 import { MARKER, paidFor, recordedCommit, reviewComment, reviewedCommit, sameCommit, shownReview, statusComment, type Paid } from "./review.js";
@@ -113,13 +113,13 @@ export async function run(): Promise<void> {
     const order = paidFor(shownReview(mine.body) ?? "")?.order;
     if (order) core.setOutput("order", order);
     core.setOutput("accepted", "true");
-    core.notice(`This commit (${short}) already has a BrainChain review: ${mine.html_url}`);
+    core.notice(`This commit (${short}) already has a BrainChain review: no review was paid for. ${mine.html_url}`);
     return;
   }
 
   // An accepted review on show stays below the status until the new one replaces it.
   const earlier = mine?.body ? shownReview(mine.body) : undefined;
-  const keep = (text: string, record: { commit: string } | Paid, below = "stays below until the new one is ready") =>
+  const keep = (text: string, record: { commit: string } | Paid, below = "stays below until the new one is accepted") =>
     statusComment(earlier ? `${text} The review of ${reviewedCommit(earlier)} ${below}.` : text, record, earlier);
   const update = (body: string) =>
     comment(token, repo, pr.number, body, mine).catch((error: unknown) => {
@@ -169,6 +169,9 @@ export async function run(): Promise<void> {
     if (brief.skipped.length) core.info(`Left out of the brief: ${brief.skipped.join(", ")}`);
     if (brief.truncated) core.warning("The diff is longer than a BrainChain brief allows, so the review covers its first part only.");
 
+    // Refused before the status comment, so a wrong max-price does not notify the pull request's subscribers.
+    const asked = await quote(preset);
+    if (asked !== undefined && asked > maxPrice) throw new Error(`${overPrice(preset, asked, maxPrice)} Nothing was charged.`);
     await checkFunds(preset, account.address, maxPrice);
 
     // Written before any money moves: it proves the token can comment, and it is where the order is recorded.
@@ -197,7 +200,6 @@ export async function run(): Promise<void> {
   const progress: Record<string, string> = {
     paying: "The payment is settling.",
     paid: "Paid; posting the task on BrainChain.",
-    posted: "The task is on BrainChain; Jev is hiring a model.",
     open: "Waiting for Jev to hire a model.",
     hired: "A model is reviewing the diff.",
     delivered: "The review is in; Jev is grading it.",
@@ -212,9 +214,10 @@ export async function run(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 15_000));
     outcome = await check(preset, posted.order).catch((error: unknown): Outcome => ({ kind: "waiting", state: `BrainChain did not answer (${failure(error)}); trying again.` }));
     if (outcome.kind === "waiting" && outcome.state !== last) {
+      const task = outcome.taskId ? `Task ${outcome.taskId}` : "The task";
       // "paid" is also a task status: the model was paid, so the review was accepted.
       const step = outcome.taskId && outcome.state === "paid" ? "Jev accepted the review; fetching it." : (progress[outcome.state] ?? outcome.state);
-      core.info(`${outcome.taskId ? `Task ${outcome.taskId}: ` : ""}${step}`);
+      core.info(outcome.state === "posted" ? `${task} is on BrainChain; Jev is hiring a model.` : outcome.taskId ? `${task}: ${step}` : step);
       last = outcome.state;
     }
   }

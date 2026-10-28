@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
-import { check, orderId, post } from "./desk.js";
+import { check, orderId, post, quote } from "./desk.js";
 import { amount, preset, units } from "./presets.js";
 import { MARKER, neutralize, paidFor, recordedCommit, reviewComment, reviewedCommit, shownReview, statusComment } from "./review.js";
 
@@ -67,11 +67,11 @@ describe("post", () => {
     await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("brief must be 1 to 32,000 characters. Nothing was charged.");
   });
 
-  it("names the desk's price when it is above max-price", async () => {
+  it("names the desk's price when it is above max-price, without x402's own wording", async () => {
     const { fetchImpl, seen } = desk({ amount: "2500000" });
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow(
-      "BrainChain charges 2.5 test USDC per review, above max-price 1. Set max-price to at least 2.5. Nothing was charged.",
-    );
+    const error = (await post(base, account, units("1"), brief, fetchImpl).catch((e: unknown) => e)) as Error;
+    expect(error.message).toBe("BrainChain charges 2.5 test USDC per review, above max-price 1. Set max-price to at least 2.5. Nothing was charged.");
+    expect(error.cause).toBeUndefined();
     expect(seen).toHaveLength(0);
   });
 
@@ -95,6 +95,24 @@ describe("post", () => {
     const error = (await post(base, account, units("1"), brief, fetchImpl).catch((e: unknown) => e)) as Error;
     expect(error.message).toMatch(/Nothing was charged\.$/);
     expect((error.cause as Error).cause).toBe(reason);
+  });
+});
+
+describe("quote", () => {
+  it("reads the desk's price in this token from its public offer, without paying", async () => {
+    const offer = { accepts: [{ network: "eip155:46630", asset: "0x1eC185467cA2D5d1c24f0EdCB91301Bca4d0a787", payTo: base.payTo, amount: "3000000" }, { network: base.network, asset: base.asset, payTo: base.payTo, amount: "1500000" }] };
+    let asked: string | undefined;
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      asked = `${init?.method ?? "GET"} ${String(input)}`;
+      return Response.json(offer);
+    }) as typeof fetch;
+    expect(await quote(base, fetchImpl)).toBe(1_500_000n);
+    expect(asked).toBe(`GET ${base.desk}/x402/tasks`);
+  });
+
+  it("is undefined when the offer cannot be read or names another payee", async () => {
+    const replies = [() => new Response("down", { status: 503 }), () => new Response("not json"), () => Response.json({ accepts: [{ network: base.network, asset: base.asset, payTo: "0x000000000000000000000000000000000000dEaD", amount: "1" }] }), () => Promise.reject(new TypeError("fetch failed"))];
+    for (const reply of replies) expect(await quote(base, (async () => reply()) as typeof fetch)).toBeUndefined();
   });
 });
 
@@ -151,8 +169,11 @@ describe("reviewComment", () => {
     const text = reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "9", review: "  No defects found.  " });
     expect(text).toContain("<!-- brainchain-review -->\n### BrainChain review\n\nNo defects found.\n");
     expect(text).toContain("the model earns 0.97 USDC");
-    expect(text).toContain("see [task 9](https://usebrainchain.com/task?id=9).");
+    expect(text).toContain("Paid 1 USDC on Base; see [task 9](https://usebrainchain.com/task?id=9).</sub>");
     expect(text).not.toMatch(/#\d/);
+    const testnet = reviewComment(base, { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "22", review: "ok" }, "abcdef1234");
+    expect(testnet).toContain("Paid 1 test USDC on Base Sepolia; BrainChain task 22. Reviewed at abcdef1.</sub>");
+    expect(reviewedCommit(testnet)).toBe("abcdef1");
     expect(reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", review: "ok" }, "abcdef1234")).toContain("Reviewed at abcdef1.");
   });
 });

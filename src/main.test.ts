@@ -11,19 +11,20 @@ import { paidFor, reviewComment, shownReview, statusComment } from "./review.js"
 const state = vi.hoisted(() => ({
   inputs: {} as Record<string, string>,
   log: [] as string[],
+  infos: [] as string[],
   notices: [] as string[],
   warnings: [] as string[],
   outputs: {} as Record<string, string>,
   reads: {} as Record<string, bigint | Error>,
   summary: [] as string[],
 }));
-const desk = vi.hoisted(() => ({ post: vi.fn(), check: vi.fn() }));
+const desk = vi.hoisted(() => ({ post: vi.fn(), check: vi.fn(), quote: vi.fn() }));
 
 vi.mock("@actions/core", () => ({
   getInput: (name: string) => state.inputs[name] ?? "",
   getBooleanInput: (name: string) => state.inputs[name] === "true",
   setSecret: () => undefined,
-  info: () => undefined,
+  info: (message: string) => state.infos.push(message),
   notice: (message: string) => state.notices.push(message),
   warning: (message: string) => state.warnings.push(message),
   setOutput: (name: string, value: string) => {
@@ -41,7 +42,7 @@ vi.mock("@actions/core", () => ({
     write: async () => undefined,
   },
 }));
-vi.mock("./desk.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("./desk.js")>()), post: desk.post, check: desk.check }));
+vi.mock("./desk.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("./desk.js")>()), post: desk.post, check: desk.check, quote: desk.quote }));
 vi.mock("viem", async (importOriginal) => ({
   ...(await importOriginal<typeof import("viem")>()),
   createPublicClient: () => ({
@@ -140,6 +141,7 @@ beforeEach(() => {
   Object.assign(state, {
     inputs: { "payer-key": KEY, "github-token": "t", "wait-minutes": "1", network: "testnet" },
     log: [],
+    infos: [],
     notices: [],
     warnings: [],
     outputs: {},
@@ -152,6 +154,7 @@ beforeEach(() => {
     return { order: ORDER, price: 1_000_000n, uncertain: false };
   });
   desk.check.mockReset().mockResolvedValue({ kind: "accepted", taskId: "4", review: "Looks correct." });
+  desk.quote.mockReset().mockResolvedValue(1_000_000n);
   event();
   stubGitHub();
   vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
@@ -211,6 +214,31 @@ describe("paying once per commit", () => {
     expect(paidFor(gh.comments[0]!.body)?.commit).toBe(SHA);
   });
 
+  it("refuses a price above max-price before writing any comment", async () => {
+    desk.quote.mockResolvedValue(2_000_000n);
+    await expect(go()).rejects.toThrow(/^BrainChain charges 2 test USDC per review, above max-price 1\. Set max-price to at least 2\. Nothing was charged\.$/);
+    expect(gh.comments).toEqual([]);
+    expect(desk.post).not.toHaveBeenCalled();
+    desk.quote.mockResolvedValue(undefined);
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("pays nothing for a commit that already has a review, and says where it is", async () => {
+    gh.comments = [{ id: 1, login: "github-actions[bot]", body: reviewComment(preset("testnet", "base"), { order: ORDER, price: 1_000_000n, uncertain: false }, { kind: "accepted", review: "ok" }, SHA) }];
+    await go();
+    expect(state.notices).toEqual(["This commit (aaaaaaa) already has a BrainChain review: no review was paid for. https://gh/c/1"]);
+    expect(state.outputs).toEqual({ order: ORDER, accepted: "true" });
+    expect(desk.post).not.toHaveBeenCalled();
+  });
+
+  it("logs where the task stands without repeating the word task", async () => {
+    desk.check.mockResolvedValueOnce({ kind: "waiting", state: "posted", taskId: "22" }).mockResolvedValueOnce({ kind: "waiting", state: "hired", taskId: "22" });
+    await go();
+    expect(state.infos).toContain("Task 22 is on BrainChain; Jev is hiring a model.");
+    expect(state.infos).toContain("Task 22: A model is reviewing the diff.");
+  });
+
   it("pays nothing when it cannot comment", async () => {
     gh.postStatus = 403;
     await expect(go()).rejects.toThrow(/Could not comment on the pull request, so no review was paid for\. The github-token needs pull-requests: write\./);
@@ -263,8 +291,8 @@ describe("the earlier review", () => {
     desk.check.mockResolvedValue({ kind: "rejected" });
     await go();
     expect(state.log.filter((line) => line.startsWith("edit"))).toEqual([
-      "edit BrainChain is reviewing aaaaaaa. The review of bbbbbbb stays below until the new one is ready.",
-      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded. The review of bbbbbbb stays below until the new one is ready.`,
+      "edit BrainChain is reviewing aaaaaaa. The review of bbbbbbb stays below until the new one is accepted.",
+      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded. The review of bbbbbbb stays below until the new one is accepted.`,
       "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. The review of bbbbbbb is below.",
     ]);
     expect(shownReview(gh.comments[0]!.body)).toBe(earlier);
@@ -272,7 +300,7 @@ describe("the earlier review", () => {
 
     desk.check.mockResolvedValue({ kind: "waiting", state: "hired" });
     await go();
-    expect(visible(gh.comments[0]!.body)).toMatch(/^The review of aaaaaaa is taking longer than this job waits for it\..* The review of bbbbbbb stays below until the new one is ready\.$/);
+    expect(visible(gh.comments[0]!.body)).toMatch(/^The review of aaaaaaa is taking longer than this job waits for it\..* The review of bbbbbbb stays below until the new one is accepted\.$/);
     expect(shownReview(gh.comments[0]!.body)).toBe(earlier);
   });
 

@@ -78,7 +78,7 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 - 1 USDC per review, paid only to the BrainChain payment desk.
 - If Jev accepts the review, the model receives 0.97 USDC and 0.03 USDC is BrainChain's protocol fee.
 - If Jev does not accept it, the price paid is refunded after the dispute window closes: about six hours on mainnet, about an hour on testnet. If no model delivers within 24 hours, it is refunded then. Refunds go to the paying wallet, in the same token on the same chain.
-- The job fails before paying if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. It also fails if Jev did not accept the review and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
+- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. It also fails if Jev did not accept the review and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
 
 The action pays nothing, and says why in the job log, for:
 
