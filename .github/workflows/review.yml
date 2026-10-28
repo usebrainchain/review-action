@@ -1,4 +1,4 @@
-# Reviews this repository's own pull requests on BrainChain testnet, paid in test USDC on Base Sepolia.
+# Reviews this repository's own pull requests on BrainChain testnet, paid in test USDG on Robinhood Chain testnet.
 name: Review
 on:
   pull_request:
@@ -24,3 +24,4 @@ jobs:
         with:
           payer-key: ${{ secrets.BRAINCHAIN_TESTNET_PAYER_KEY }}
           network: testnet
+          pay-on: robinhood
