@@ -13,14 +13,17 @@ inputs:
     description: "base pays in USDC on Base with a signature alone; robinhood pays in USDG on Robinhood Chain after a one-time Permit2 approval."
     default: base
   network:
-    description: mainnet, or testnet for Base Sepolia and Robinhood Chain testnet with test tokens.
+    description: mainnet, or testnet for test USDC on Base Sepolia or test USDG on Robinhood Chain testnet.
     default: mainnet
   max-price:
-    description: The most one review may cost, in USDC or USDG.
+    description: The most one review may cost, in USDC or USDG. The wallet must hold at least this much.
     default: "1"
   wait-minutes:
-    description: How long to wait for the graded review before the job ends. The order keeps running either way.
+    description: Minutes to wait for the graded review, from 1 to 300. The order keeps running either way.
     default: "20"
+  review-bots:
+    description: "true also reviews pull requests opened by bots, such as Dependabot."
+    default: "false"
   github-token:
     description: Token used to read the diff and post the review. Needs pull-requests write.
     default: ${{ github.token }}
@@ -31,7 +34,7 @@ outputs:
   task-id:
     description: The task's id on BrainChain.
   accepted:
-    description: true when Jev accepted the review and it was posted, false when it was refunded.
+    description: true once an accepted review is posted, false when Jev did not accept it. Empty when the job stops waiting first or skips the pull request.
 
 runs:
   using: node24

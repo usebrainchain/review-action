@@ -1,46 +1,84 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comment } from "./github.js";
+import { comment, commenter, diff, ownComment } from "./github.js";
 
 const MARKER = "<!-- brainchain-review -->";
 
 afterEach(() => vi.unstubAllGlobals());
 
-function github(existing: { id: number; body: string; type: string }[]) {
+/** Answers each request with the reply for its method, recording what was asked. */
+function github(replies: Partial<Record<string, () => Response>>) {
   const calls: { method: string; url: string }[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
-    calls.push({ method: init.method ?? "GET", url });
-    if ((init.method ?? "GET") === "GET") return Response.json(existing.map((c) => ({ id: c.id, body: c.body, html_url: `https://gh/c/${c.id}`, user: { type: c.type } })));
-    return Response.json({ id: 99, html_url: init.method === "PATCH" ? String(url) : "https://gh/c/new" });
+    const method = init.method ?? "GET";
+    calls.push({ method, url });
+    return replies[method]?.() ?? new Response("unexpected", { status: 500 });
   });
   return calls;
 }
 
 describe("comment", () => {
-  it("replaces this action's earlier review", async () => {
-    const calls = github([{ id: 1, body: "looks good", type: "User" }, { id: 7, body: `${MARKER}\nold review`, type: "Bot" }]);
-    await comment("t", "acme/api", 3, "new", MARKER);
-    expect(calls.at(-1)).toMatchObject({ method: "PATCH" });
-    expect(calls.at(-1)!.url).toMatch(/\/issues\/comments\/7$/);
+  it("writes over the earlier comment", async () => {
+    const calls = github({ PATCH: () => Response.json({ id: 7, html_url: "https://gh/c/7" }) });
+    expect(await comment("t", "acme/api", 3, "new", { id: 7 })).toMatchObject({ id: 7 });
+    expect(calls).toEqual([{ method: "PATCH", url: "https://api.github.com/repos/acme/api/issues/comments/7" }]);
   });
 
-  it("posts anew when the earlier review cannot be edited", async () => {
-    const calls: string[] = [];
-    vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
-      const method = init.method ?? "GET";
-      calls.push(method);
-      if (method === "GET") return Response.json([{ id: 7, body: `${MARKER}\nold`, html_url: "x", user: { type: "Bot" } }]);
-      if (method === "PATCH") return new Response("forbidden", { status: 403 });
-      return Response.json({ html_url: "https://gh/c/new" });
-    });
-    expect(await comment("t", "acme/api", 3, "new", MARKER)).toBe("https://gh/c/new");
-    expect(calls).toEqual(["GET", "PATCH", "POST"]);
+  it("posts anew when the earlier comment is gone or cannot be edited", async () => {
+    for (const status of [403, 404]) {
+      const calls = github({ PATCH: () => new Response("no", { status }), POST: () => Response.json({ id: 9, html_url: "https://gh/c/new" }) });
+      expect((await comment("t", "acme/api", 3, "new", { id: 7 })).html_url).toBe("https://gh/c/new");
+      expect(calls.map((c) => c.method)).toEqual(["PATCH", "POST"]);
+    }
   });
 
-  it("posts a new comment when there is none, and never edits a person's comment that quotes the marker", async () => {
-    const calls = github([{ id: 2, body: `quoting ${MARKER}`, type: "User" }]);
-    await comment("t", "acme/api", 3, "new", MARKER);
-    expect(calls.at(-1)).toMatchObject({ method: "POST" });
-    expect(calls.at(-1)!.url).toMatch(/\/issues\/3\/comments$/);
+  it("fails on any other error instead of posting a second comment", async () => {
+    const calls = github({ PATCH: () => new Response("down", { status: 502 }), POST: () => Response.json({ id: 9 }) });
+    await expect(comment("t", "acme/api", 3, "new", { id: 7 })).rejects.toThrow(/GitHub answered 502/);
+    expect(calls.map((c) => c.method)).toEqual(["PATCH"]);
+  });
+
+  it("posts a new comment when there is none", async () => {
+    const calls = github({ POST: () => Response.json({ id: 9, html_url: "https://gh/c/new" }) });
+    await comment("t", "acme/api", 3, "new");
+    expect(calls).toEqual([{ method: "POST", url: "https://api.github.com/repos/acme/api/issues/3/comments" }]);
+  });
+});
+
+describe("ownComment", () => {
+  const user = (login: string) => ({ login, type: login.endsWith("[bot]") ? "Bot" : "User" });
+  const at = (id: number, body: string, login: string) => ({ id, body, html_url: "x", user: user(login) });
+
+  it("takes the newest comment by this login that starts with the marker, across pages", async () => {
+    const first = Array.from({ length: 100 }, (_, i) => at(1000 + i, "chatter", "dev"));
+    first[10] = at(10, `${MARKER}\nold`, "octo");
+    const second = [at(20, `${MARKER}\nnewer`, "octo"), at(21, `${MARKER}\nby a bot`, "github-actions[bot]"), at(22, `quoting ${MARKER}`, "octo")];
+    vi.stubGlobal("fetch", async (url: string) => Response.json(url.endsWith("&page=1") ? first : second));
+    expect((await ownComment("t", "acme/api", 3, "octo", MARKER))?.id).toBe(20);
+    expect(await ownComment("t", "acme/api", 3, "someone", MARKER)).toBeUndefined();
+  });
+
+  it("takes the newest bot comment when the token's login is unknown, as with an App token", async () => {
+    const comments = [at(1, `${MARKER}\nold`, "github-actions[bot]"), at(2, `${MARKER}\nnewer`, "acme-reviews[bot]"), at(3, `${MARKER}\nby a person`, "mallory")];
+    vi.stubGlobal("fetch", async () => Response.json(comments));
+    expect((await ownComment("t", "acme/api", 3, undefined, MARKER))?.id).toBe(2);
+  });
+});
+
+describe("commenter", () => {
+  it("is a person's token's own login, and undefined for a token GitHub will not name", async () => {
+    github({ GET: () => Response.json({ login: "octo" }) });
+    expect(await commenter("t")).toBe("octo");
+    github({ GET: () => new Response("Resource not accessible by integration", { status: 403 }) });
+    expect(await commenter("t")).toBeUndefined();
+  });
+});
+
+describe("diff", () => {
+  it("is undefined when GitHub will not produce one, and fails on other errors", async () => {
+    github({ GET: () => Response.json({ errors: [{ code: "too_large" }] }, { status: 406 }) });
+    expect(await diff("t", "acme/api", 3)).toBeUndefined();
+    github({ GET: () => new Response("down", { status: 502 }) });
+    await expect(diff("t", "acme/api", 3)).rejects.toThrow(/GitHub answered 502/);
   });
 });

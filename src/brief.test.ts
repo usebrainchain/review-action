@@ -33,20 +33,20 @@ describe("buildBrief", () => {
   });
 
   it("cuts a long diff on a line boundary and says how much is shown", () => {
-    const lines = Array.from({ length: 400 }, (_, i) => `+line ${i} of a long change`).join("\n");
+    const lines = Array.from({ length: 2_000 }, (_, i) => `+line ${i} of a long change`).join("\n");
     const brief = buildBrief(pr, file("src/big.ts", lines));
     expect(brief.truncated).toBe(true);
     expect(brief.brief.length).toBeLessThanOrEqual(LIMITS.brief);
     expect(brief.brief).toMatch(/The diff is cut at [\d,]+ of [\d,]+ characters\. Review only what is shown\.$/);
     expect(brief.brief).toMatch(/of a long change\n```\n/);
-    expect(brief.brief).not.toMatch(/line 399 of/);
+    expect(brief.brief).not.toMatch(/line 1999 of/);
   });
 
   it("narrows the context only when the full diff does not fit", () => {
     const hunk = (start: number) => [`@@ -${start},7 +${start},7 @@`, " c1", " c2", " c3", "-old", "+new", " c4", " c5", " c6"].join("\n");
     const one = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n${hunk(10)}\n`;
     expect(buildBrief(pr, one).brief).toContain(" 10 c1");
-    const many = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n${Array.from({ length: 60 }, (_, i) => hunk(10 + i * 20)).join("\n")}\n`;
+    const many = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n${Array.from({ length: 450 }, (_, i) => hunk(10 + i * 20)).join("\n")}\n`;
     const brief = buildBrief(pr, many);
     expect(brief.brief).not.toContain(" 10 c1");
     expect(brief.brief).toContain(" 12 c3");
@@ -55,11 +55,40 @@ describe("buildBrief", () => {
   it("says so when nothing reviewable changed", () => {
     expect(buildBrief(pr, file("yarn.lock", "+x")).brief).toMatch(/The diff has no reviewable changes\.$/);
   });
+
+  it("holds 32,000 characters", () => {
+    expect(LIMITS.brief).toBe(32_000);
+  });
+
+  it("is reviewable only when a kept file adds or removes a line", () => {
+    const rename = "diff --git a/old.ts b/new.ts\nsimilarity index 100%\nrename from old.ts\nrename to new.ts\n";
+    const binary = "diff --git a/x.bin b/x.bin\nindex 1..2 100644\nBinary files a/x.bin and b/x.bin differ\n";
+    for (const diff of ["", file("deno.lock", "+x"), file("app.wasm", "+x"), rename, binary, rename + binary + file("yarn.lock", "+x")]) {
+      expect(buildBrief(pr, diff).reviewable).toBe(false);
+    }
+    expect(buildBrief(pr, rename + file("src/a.ts", "-old")).reviewable).toBe(true);
+  });
+
+  it("leaves Deno lockfiles and WebAssembly out", () => {
+    expect(buildBrief(pr, file("deno.lock", "+x") + file("pkg/app.wasm", "+x") + file("src/a.ts", "+y")).skipped).toEqual(["deno.lock", "pkg/app.wasm"]);
+  });
 });
 
 describe("splitDiff", () => {
   it("names each file by its new path", () => {
     expect(splitDiff(file("a.ts", "+1") + file("b/c.ts", "+2")).map((f) => f.path)).toEqual(["a.ts", "b/c.ts"]);
+  });
+
+  it("reads paths with spaces, and paths git quotes", () => {
+    const headers = [
+      "diff --git a/my file.ts b/my file.ts",
+      "diff --git a/x b/y.ts b/x b/y.ts",
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"',
+      'diff --git "a/say \\"hi\\".ts" "b/say \\"hi\\".ts"',
+      'diff --git a/old name.ts "b/new\\tname.ts"',
+      "diff --git a/old.ts b/new dir/new.ts",
+    ];
+    expect(splitDiff(headers.map((h) => `${h}\n`).join("")).map((f) => f.path)).toEqual(["my file.ts", "x b/y.ts", "café.ts", 'say "hi".ts', "new\tname.ts", "new dir/new.ts"]);
   });
 });
 

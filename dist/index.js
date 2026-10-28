@@ -11806,16 +11806,16 @@ var require_dns = __commonJS({
       setRecords(origin, addresses) {
         const timestamp = Date.now();
         const records = { records: { 4: null, 6: null } };
-        for (const record of addresses) {
-          record.timestamp = timestamp;
-          if (typeof record.ttl === "number") {
-            record.ttl = Math.min(record.ttl, this.#maxTTL);
+        for (const record2 of addresses) {
+          record2.timestamp = timestamp;
+          if (typeof record2.ttl === "number") {
+            record2.ttl = Math.min(record2.ttl, this.#maxTTL);
           } else {
-            record.ttl = this.#maxTTL;
+            record2.ttl = this.#maxTTL;
           }
-          const familyRecords = records.records[record.family] ?? { ips: [] };
-          familyRecords.ips.push(record);
-          records.records[record.family] = familyRecords;
+          const familyRecords = records.records[record2.family] ?? { ips: [] };
+          familyRecords.ips.push(record2);
+          records.records[record2.family] = familyRecords;
         }
         this.#records.set(origin.hostname, records);
       }
@@ -28819,9 +28819,6 @@ var init_call = __esm({
   }
 });
 
-// src/main.ts
-import { readFileSync } from "node:fs";
-
 // node_modules/@actions/core/lib/command.js
 import * as os from "os";
 
@@ -29299,6 +29296,17 @@ function getInput(name, options) {
   }
   return val.trim();
 }
+function getBooleanInput(name, options) {
+  const trueValue = ["true", "True", "TRUE"];
+  const falseValue = ["false", "False", "FALSE"];
+  const val = getInput(name, options);
+  if (trueValue.includes(val))
+    return true;
+  if (falseValue.includes(val))
+    return false;
+  throw new TypeError(`Input does not meet YAML 1.2 "Core Schema" specification: ${name}
+Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
+}
 function setOutput(name, value) {
   const filePath = process.env["GITHUB_OUTPUT"] || "";
   if (filePath) {
@@ -29323,6 +29331,9 @@ function notice(message, properties = {}) {
 function info(message) {
   process.stdout.write(message + os4.EOL);
 }
+
+// src/main.ts
+import { readFileSync } from "node:fs";
 
 // node_modules/viem/_esm/index.js
 init_exports();
@@ -32104,13 +32115,13 @@ function getNftMetadataUri({ nft, uri }) {
 }
 
 // node_modules/viem/_esm/utils/ens/avatar/parseAvatarRecord.js
-async function parseAvatarRecord(client, { gatewayUrls, record }) {
-  if (/eip155:/i.test(record))
-    return parseNftAvatarUri(client, { gatewayUrls, record });
-  return parseAvatarUri({ uri: record, gatewayUrls });
+async function parseAvatarRecord(client, { gatewayUrls, record: record2 }) {
+  if (/eip155:/i.test(record2))
+    return parseNftAvatarUri(client, { gatewayUrls, record: record2 });
+  return parseAvatarUri({ uri: record2, gatewayUrls });
 }
-async function parseNftAvatarUri(client, { gatewayUrls, record }) {
-  const nft = parseNftUri(record);
+async function parseNftAvatarUri(client, { gatewayUrls, record: record2 }) {
+  const nft = parseNftUri(record2);
   const nftUri = await getNftTokenUri(client, { nft });
   const { uri: resolvedNftUri, isOnChain, isEncoded } = resolveAvatarUri({ uri: nftUri, gatewayUrls });
   if (isOnChain && (resolvedNftUri.includes("data:application/json;base64,") || resolvedNftUri.startsWith("{"))) {
@@ -32175,12 +32186,12 @@ async function getEnsText(client, parameters) {
     const res = await readContractAction(readContractParameters);
     if (res[0] === "0x")
       return null;
-    const record = decodeFunctionResult({
+    const record2 = decodeFunctionResult({
       abi: textResolverAbi,
       functionName: "text",
       data: res[0]
     });
-    return record === "" ? null : record;
+    return record2 === "" ? null : record2;
   } catch (err) {
     if (strict)
       throw err;
@@ -32192,7 +32203,7 @@ async function getEnsText(client, parameters) {
 
 // node_modules/viem/_esm/actions/ens/getEnsAvatar.js
 async function getEnsAvatar(client, { blockNumber, blockTag, assetGatewayUrls, name, gatewayUrls, strict, universalResolverAddress }) {
-  const record = await getAction(client, getEnsText, "getEnsText")({
+  const record2 = await getAction(client, getEnsText, "getEnsText")({
     blockNumber,
     blockTag,
     key: "avatar",
@@ -32201,11 +32212,11 @@ async function getEnsAvatar(client, { blockNumber, blockTag, assetGatewayUrls, n
     gatewayUrls,
     strict
   });
-  if (!record)
+  if (!record2)
     return null;
   try {
     return await parseAvatarRecord(client, {
-      record,
+      record: record2,
       gatewayUrls: assetGatewayUrls
     });
   } catch {
@@ -38088,26 +38099,39 @@ function privateKeyToAccount(privateKey, options = {}) {
 }
 
 // src/brief.ts
-var LIMITS = { title: 120, brief: 4e3, level: 200 };
+var LIMITS = { title: 120, brief: 32e3, level: 200 };
 var LEVELS = [
   "Names real defects in the diff with file, line and a concrete fix, or correctly finds none, and invents nothing",
   "Accurate and useful: at least one real point about the diff, nothing invented, though it may miss a defect",
   "Generic, wrong about the code, or reports problems that are not in the diff"
 ];
 var NOISE = [
-  /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Gemfile\.lock|composer\.lock|go\.sum)$/,
+  /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Gemfile\.lock|composer\.lock|go\.sum|deno\.lock)$/,
   /\.min\.(js|css)$/,
-  /\.(png|jpe?g|gif|webp|ico|pdf|zip|woff2?|ttf)$/,
+  /\.(png|jpe?g|gif|webp|ico|pdf|zip|woff2?|ttf|wasm)$/,
   /(^|\/)(dist|build|vendor|node_modules)\//,
   /\.snap$/
 ];
 function splitDiff(diff2) {
   const parts = diff2.split(/^(?=diff --git )/m).filter((part) => part.startsWith("diff --git "));
-  return parts.map((text) => {
-    const match = /^diff --git a\/(.+?) b\/(.+)$/m.exec(text);
-    return { path: match?.[2] ?? match?.[1] ?? "", text };
-  });
+  return parts.map((text) => ({ path: newPath(text.split("\n", 1)[0].slice("diff --git ".length)), text }));
 }
+function newPath(sides) {
+  const quoted = /"b\/((?:[^"\\]|\\.)*)"$/.exec(sides);
+  if (quoted) return unquote(quoted[1]);
+  const half = (sides.length - 1) / 2;
+  if (sides.startsWith("a/") && sides.slice(half).startsWith(" b/") && sides.slice(2, half) === sides.slice(half + 3)) return sides.slice(half + 3);
+  return /^(?:"a\/(?:[^"\\]|\\.)*"|a\/.+?) b\/(.+)$/.exec(sides)?.[1] ?? "";
+}
+var ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
+function unquote(path) {
+  const bytes = path.split(/(\\[0-7]{3}|\\.)/).flatMap((part) => {
+    if (!part.startsWith("\\") || part.length < 2) return [...Buffer.from(part)];
+    return [/^\\[0-7]{3}$/.test(part) ? parseInt(part.slice(1), 8) : ESCAPES[part[1]] ?? part.charCodeAt(1)];
+  });
+  return Buffer.from(bytes).toString("utf8");
+}
+var changed = (file) => file.text.split(/^(?=@@ )/m).slice(1).some((hunk) => /\n[+-]/.test(hunk));
 function compact(file, context = 3) {
   const out = [`File: ${file.path}`];
   for (const hunk of file.text.split(/^(?=@@ )/m).slice(1)) {
@@ -38167,7 +38191,7 @@ The diff is cut at ${shown2.toLocaleString("en-US")} of ${total.toLocaleString("
     shown = slice4.slice(0, Math.max(0, slice4.lastIndexOf("\n")));
   }
   const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : `${head}${open2}${shown}${close}${truncated ? note(shown.length, body.length) : ""}`;
-  return { title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title), brief, levels: LEVELS, skipped, truncated };
+  return { title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title), brief, levels: LEVELS, skipped, truncated, reviewable: kept.some(changed) };
 }
 
 // node_modules/@x402/evm/dist/esm/chunk-EKCH75YB.mjs
@@ -44358,15 +44382,17 @@ async function post(preset2, account, maxPrice, brief, fetchImpl = fetch) {
       body: JSON.stringify(brief),
       signal: AbortSignal.timeout(12e4)
     });
-  } catch (error2) {
+  } catch (error3) {
     if (signed) return { order: orderId(signed), price, uncertain: true };
-    throw new Error(`${explain(error2, preset2)} Nothing was charged.`);
+    throw new Error(`${explain(error3, preset2)} Nothing was charged.`, { cause: error3 });
   }
   const reply = await response.json().catch(() => ({}));
   const order = typeof reply.order === "string" && /^0x[0-9a-f]{64}$/.test(reply.order) ? reply.order : void 0;
   if (response.ok && order) return { order, price, uncertain: false };
   if (signed && response.status !== 400 && response.status !== 402) return { order: order ?? orderId(signed), price, uncertain: true };
-  throw new Error(`${typeof reply.error === "string" ? reply.error : `The desk answered ${response.status}.`} Nothing was charged.`);
+  const error2 = typeof reply.error === "string" ? reply.error : void 0;
+  if (response.status === 400 && error2 && /too large to post/i.test(error2)) throw new Error("The desk refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+  throw new Error(`${error2 ?? `The desk answered ${response.status}.`} Nothing was charged.`);
 }
 function explain(error2, preset2) {
   const message = (error2 instanceof Error ? error2.message : String(error2)).split("\n")[0] ?? "";
@@ -44392,7 +44418,7 @@ async function check(preset2, order, fetchImpl = fetch) {
   if (view.state === "failed") return { kind: "failed", reason: "The payment did not settle. Nothing was charged." };
   if (view.state === "refund-failed") return { kind: "refund-failed", ...taskId ? { taskId } : {} };
   if (view.state === "refunding" || view.state === "refunded" || view.task?.accepted === false) return { kind: "rejected", ...taskId ? { taskId } : {} };
-  if (view.result?.startsWith(`${preset2.desk}/records/`)) {
+  if (view.task?.accepted === true && view.result?.startsWith(`${preset2.desk}/records/`)) {
     const text = await fetchImpl(view.result, { signal: AbortSignal.timeout(2e4) });
     if (text.ok) return { kind: "accepted", ...taskId ? { taskId } : {}, review: await text.text() };
   }
@@ -44401,6 +44427,13 @@ async function check(preset2, order, fetchImpl = fetch) {
 
 // src/github.ts
 var API = process.env.GITHUB_API_URL ?? "https://api.github.com";
+var GitHubError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
 async function call2(token, path, init = {}) {
   const response = await fetch(`${API}${path}`, {
     ...init,
@@ -44413,31 +44446,50 @@ async function call2(token, path, init = {}) {
     },
     signal: AbortSignal.timeout(3e4)
   });
-  if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${path}: ${(await response.text()).slice(0, 200)}`);
+  if (!response.ok) throw new GitHubError(`GitHub answered ${response.status} for ${path}: ${(await response.text()).slice(0, 200)}`, response.status);
   return response;
 }
 async function diff(token, repo, number) {
-  return (await call2(token, `/repos/${repo}/pulls/${number}`, { accept: "application/vnd.github.diff" })).text();
+  try {
+    return await (await call2(token, `/repos/${repo}/pulls/${number}`, { accept: "application/vnd.github.diff" })).text();
+  } catch (error2) {
+    if (error2 instanceof GitHubError && error2.status === 406) return void 0;
+    throw error2;
+  }
 }
-async function earlierReview(token, repo, number, marker) {
+async function pullRequest(token, repo, number) {
+  return await (await call2(token, `/repos/${repo}/pulls/${number}`)).json();
+}
+async function commenter(token) {
+  try {
+    const user = await (await call2(token, "/user")).json();
+    return typeof user.login === "string" ? user.login : void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function ownComment(token, repo, number, login, marker) {
+  let newest;
   for (let page = 1; page <= 10; page++) {
     const comments = await (await call2(token, `/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`)).json();
-    const found = comments.find((c) => c.user?.type === "Bot" && c.body?.includes(marker));
-    if (found || comments.length < 100) return found;
+    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) newest = c;
+    if (comments.length < 100) break;
   }
-  return void 0;
+  return newest;
 }
-async function comment(token, repo, number, body, marker) {
-  const earlier = await earlierReview(token, repo, number, marker);
+async function comment(token, repo, number, body, earlier) {
   if (earlier) {
-    const edited = await call2(token, `/repos/${repo}/issues/comments/${earlier.id}`, { method: "PATCH", body: JSON.stringify({ body }) }).catch(() => void 0);
-    if (edited) return (await edited.json()).html_url;
+    try {
+      return await (await call2(token, `/repos/${repo}/issues/comments/${earlier.id}`, { method: "PATCH", body: JSON.stringify({ body }) })).json();
+    } catch (error2) {
+      if (!(error2 instanceof GitHubError) || error2.status !== 403 && error2.status !== 404) throw error2;
+    }
   }
-  const response = await call2(token, `/repos/${repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) });
-  return (await response.json()).html_url;
+  return await (await call2(token, `/repos/${repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) })).json();
 }
 
 // src/presets.ts
+var PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 var MAINNET = { desk: "https://brain.usebrainchain.com", payTo: "0xafB0C4Ef895D4895040cdC6435B96D3EE8350c6E" };
 var TESTNET = { desk: "https://brain.testnet.usebrainchain.com", payTo: "0xf848984c8A0D9E49Cc9C97380C62b34C6f3b97D1" };
 var PRESETS = {
@@ -44458,6 +44510,7 @@ var PRESETS = {
       rpc: "https://rpc.mainnet.chain.robinhood.com",
       chain: "Robinhood Chain",
       token: "USDG",
+      permit2: true,
       taskPage: (id) => `https://usebrainchain.com/task?id=${id}`
     }
   },
@@ -44476,7 +44529,8 @@ var PRESETS = {
       asset: "0x1eC185467cA2D5d1c24f0EdCB91301Bca4d0a787",
       rpc: "https://rpc.testnet.chain.robinhood.com",
       chain: "Robinhood Chain testnet",
-      token: "test USDG"
+      token: "test USDG",
+      permit2: true
     }
   }
 };
@@ -44503,20 +44557,50 @@ function amount(value) {
 var FEE_BPS = 300n;
 var MARKER = "<!-- brainchain-review -->";
 var MAX_REVIEW = 6e4;
+var FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+var escapeProse = (text) => text.replace(/<!--/g, "&lt;!--").replace(/<(\/?)(details|summary)\b/gi, "&lt;$1$2").replace(/(^|\W)@(?=[A-Za-z0-9])/g, "$1@\u200B");
+var escapeLine = (line) => line.replace(/(`+)(?!`).*?(?<!`)\1(?!`)|[^`]+|`+/g, (part, span) => span ? part : escapeProse(part));
 function neutralize(review) {
-  const text = review.length > MAX_REVIEW ? `${review.slice(0, MAX_REVIEW)}
-
-[The review is longer than a comment allows and was cut here.]` : review;
-  return text.replace(/<!--/g, "&lt;!--").replace(/<(\/?)(details|summary)\b/gi, "&lt;$1$2").replace(/(^|[^\w`])@(?=[A-Za-z0-9])/g, "$1@\u200B");
+  const long = review.length > MAX_REVIEW;
+  const lines = (long ? review.slice(0, MAX_REVIEW) : review).split("\n");
+  let fence;
+  for (let i = 0; i < lines.length; i++) {
+    const match = FENCE.exec(lines[i]);
+    if (fence) {
+      if (match && match[1][0] === fence[0] && match[1].length >= fence.length && !match[2].trim()) fence = void 0;
+      continue;
+    }
+    if (match && !(match[1][0] === "`" && match[2].includes("`"))) {
+      fence = match[1];
+      continue;
+    }
+    lines[i] = escapeLine(lines[i]);
+  }
+  if (fence) lines.push(fence);
+  if (long) lines.push("", "[The review is longer than a comment allows and was cut here.]");
+  return lines.join("\n");
+}
+var RECORD = /^<!-- brainchain order=(0x[0-9a-f]{64}) commit=([0-9a-f]{7,64}) price=(\d+) -->$/;
+var record = (paid) => `<!-- brainchain order=${paid.order} commit=${paid.commit} price=${paid.price} -->`;
+function paidFor(body) {
+  const [first, second = ""] = body.split(/\r?\n/, 2);
+  const match = first === MARKER ? RECORD.exec(second) : null;
+  return match ? { order: match[1], commit: match[2], price: BigInt(match[3]) } : void 0;
+}
+function statusComment(text, paid) {
+  return [MARKER, ...paid ? [record(paid)] : [], text].join("\n");
 }
 function reviewedCommit(body) {
-  return body.includes(MARKER) ? /Reviewed at ([0-9a-f]{7})\./.exec(body)?.[1] : void 0;
+  if (!body.startsWith(MARKER)) return void 0;
+  const footer = body.trimEnd().split(/\r?\n/).at(-1) ?? "";
+  return /^<sub>Reviewed through \[BrainChain\]\(.* Reviewed at ([0-9a-f]{7})\.<\/sub>$/.exec(footer)?.[1];
 }
 function reviewComment(preset2, posted, outcome, commit) {
   const paid = amount(posted.price * (10000n - FEE_BPS) / 10000n);
   const task = outcome.taskId ? preset2.taskPage ? `[task #${outcome.taskId}](${preset2.taskPage(outcome.taskId)})` : `task #${outcome.taskId}` : "its task";
   return [
     MARKER,
+    ...commit ? [record({ order: posted.order, commit, price: posted.price })] : [],
     "### BrainChain review",
     "",
     neutralize(outcome.review.trim()),
@@ -44527,7 +44611,33 @@ function reviewComment(preset2, posted, outcome, commit) {
 }
 
 // src/main.ts
-var erc20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+var erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address, address) view returns (uint256)"]);
+function failure(error2) {
+  const message = (error2 instanceof Error ? error2.message : String(error2)).split("\n")[0];
+  let cause = error2 instanceof Error ? error2.cause : void 0;
+  while (cause instanceof Error && cause.cause instanceof Error) cause = cause.cause;
+  if (!(cause instanceof Error)) return message;
+  const reason = cause.message || (cause instanceof AggregateError ? cause.errors.map(String).join("; ") : "");
+  return reason && !message.includes(reason) ? `${message} (${reason})` : message;
+}
+async function checkFunds(preset2, owner, maxPrice) {
+  const reader = createPublicClient({ transport: http(preset2.rpc, { timeout: 15e3, retryCount: 2 }) });
+  const read = (what, call3) => call3.catch((error2) => {
+    warning(`Could not read the paying wallet's ${what} on ${preset2.chain}, so paying without that check: ${failure(error2)}`);
+    return void 0;
+  });
+  const balance = await read(`${preset2.token} balance`, reader.readContract({ address: preset2.asset, abi: erc20, functionName: "balanceOf", args: [owner] }));
+  if (balance !== void 0 && balance < maxPrice) {
+    throw new Error(`The paying wallet ${owner} holds ${amount(balance)} ${preset2.token} on ${preset2.chain}; a review costs up to ${amount(maxPrice)}. Nothing was charged.`);
+  }
+  if (!preset2.permit2) return;
+  const allowance = await read("Permit2 allowance", reader.readContract({ address: preset2.asset, abi: erc20, functionName: "allowance", args: [owner, PERMIT2] }));
+  if (allowance !== void 0 && allowance < maxPrice) {
+    throw new Error(
+      `The paying wallet ${owner} lets Permit2 spend ${amount(allowance)} ${preset2.token}; a review costs up to ${amount(maxPrice)}. Approve it once from that wallet: call approve(${PERMIT2}, amount) on the ${preset2.token} contract ${preset2.asset} on ${preset2.chain}, with an amount of at least max-price. Nothing was charged.`
+    );
+  }
+}
 async function run() {
   const path = process.env.GITHUB_EVENT_PATH;
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -44540,6 +44650,10 @@ async function run() {
   }
   if (pr.draft) {
     notice("Draft pull request: no review requested.");
+    return;
+  }
+  if (pr.user?.type === "Bot" && !getBooleanInput("review-bots")) {
+    notice(`Pull request opened by ${pr.user.login ?? "a bot"}: no review was paid for. Set review-bots to true to review these.`);
     return;
   }
   const repo = pr.base.repo.full_name;
@@ -44562,23 +44676,68 @@ async function run() {
   if (!Number.isFinite(waitMinutes) || waitMinutes < 1 || waitMinutes > 300) throw new Error("wait-minutes must be between 1 and 300.");
   const token = getInput("github-token", { required: true });
   const account = privateKeyToAccount(key);
-  const reader = createPublicClient({ transport: http(preset2.rpc, { timeout: 15e3, retryCount: 2 }) });
-  const balance = await reader.readContract({ address: preset2.asset, abi: erc20, functionName: "balanceOf", args: [account.address] });
-  if (balance < maxPrice) {
-    throw new Error(`The paying wallet ${account.address} holds ${amount(balance)} ${preset2.token} on ${preset2.chain}; a review costs up to ${amount(maxPrice)}. Nothing was charged.`);
-  }
-  const head = pr.head.sha?.slice(0, 7);
-  const earlier = await earlierReview(token, repo, pr.number, MARKER);
-  if (head && earlier?.body && reviewedCommit(earlier.body) === head) {
-    notice(`This commit (${head}) already has a BrainChain review: ${earlier.html_url}`);
+  const head = pr.head.sha;
+  const short = head.slice(0, 7);
+  let mine = await ownComment(token, repo, pr.number, await commenter(token), MARKER);
+  const update = (body) => comment(token, repo, pr.number, body, mine).catch((error2) => {
+    warning(`Could not update the comment on the pull request: ${failure(error2)}`);
+  });
+  if (mine?.body && reviewedCommit(mine.body) === short) {
+    const order = paidFor(mine.body)?.order;
+    if (order) setOutput("order", order);
+    setOutput("accepted", "true");
+    notice(`This commit (${short}) already has a BrainChain review: ${mine.html_url}`);
     return;
   }
-  const brief = buildBrief({ number: pr.number, title: pr.title, body: pr.body, repo }, await diff(token, repo, pr.number));
-  if (brief.skipped.length) info(`Left out of the brief: ${brief.skipped.join(", ")}`);
-  if (brief.truncated) warning("The diff is longer than a BrainChain brief allows, so the review covers its first part only.");
-  const posted = await post(preset2, account, maxPrice, brief);
-  setOutput("order", posted.order);
-  info(`Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}. Order ${posted.order}${posted.uncertain ? " (confirmation was lost; following it)" : ""}.`);
+  let posted;
+  const recorded = mine?.body ? paidFor(mine.body) : void 0;
+  if (recorded?.commit === head) {
+    posted = { order: recorded.order, price: recorded.price, uncertain: false };
+    setOutput("order", posted.order);
+    info(`This commit was paid for already, as order ${posted.order}. Following it; nothing more is paid.`);
+  } else {
+    const text = await diff(token, repo, pr.number);
+    if (text === void 0) {
+      notice("GitHub gives no diff for a pull request over 300 files or 20,000 lines, so no review was paid for.");
+      return;
+    }
+    const live = await pullRequest(token, repo, pr.number);
+    if (live.state !== "open") {
+      notice("The pull request is closed: no review was paid for.");
+      return;
+    }
+    if (live.head.sha !== head) {
+      notice(`The pull request has moved on from ${short} to ${live.head.sha.slice(0, 7)}: no review was paid for ${short}.`);
+      return;
+    }
+    const brief = buildBrief({ number: pr.number, title: pr.title, body: pr.body, repo }, text);
+    if (!brief.reviewable) {
+      notice("The diff changes no lines outside lockfiles, build output and binary files: no review was paid for.");
+      return;
+    }
+    if (brief.skipped.length) info(`Left out of the brief: ${brief.skipped.join(", ")}`);
+    if (brief.truncated) warning("The diff is longer than a BrainChain brief allows, so the review covers its first part only.");
+    await checkFunds(preset2, account.address, maxPrice);
+    mine = await comment(token, repo, pr.number, statusComment(`BrainChain is reviewing ${short}.`), mine).catch((error2) => {
+      throw new Error(`Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure(error2)}`);
+    });
+    try {
+      posted = await post(preset2, account, maxPrice, brief);
+    } catch (error2) {
+      await update(statusComment(`BrainChain did not review ${short}: the payment was not made, so nothing was charged.`));
+      throw error2;
+    }
+    setOutput("order", posted.order);
+    info(`Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}. Order ${posted.order}${posted.uncertain ? " (confirmation was lost; following it)" : ""}.`);
+    const reviewing = statusComment(
+      `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment is refunded.`,
+      { order: posted.order, commit: head, price: posted.price }
+    );
+    mine = await comment(token, repo, pr.number, reviewing, mine).catch((error2) => {
+      warning(`Could not record order ${posted.order} on the pull request, so a re-run of this job would pay again: ${failure(error2)}`);
+      return mine;
+    });
+  }
   const deadline = Date.now() + waitMinutes * 6e4;
   const progress = {
     paying: "The payment is settling.",
@@ -44594,37 +44753,52 @@ async function run() {
   let last = "";
   while (outcome.kind === "waiting" && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 15e3));
-    outcome = await check(preset2, posted.order).catch((error2) => ({ kind: "waiting", state: `unreachable (${String(error2)})` }));
+    outcome = await check(preset2, posted.order).catch((error2) => ({ kind: "waiting", state: `unreachable (${failure(error2)})` }));
     if (outcome.kind === "waiting" && outcome.state !== last) {
       info(`${outcome.taskId ? `Task #${outcome.taskId}: ` : ""}${progress[outcome.state] ?? outcome.state}`);
       last = outcome.state;
     }
   }
   if ("taskId" in outcome && outcome.taskId) setOutput("task-id", outcome.taskId);
+  const paid = { order: posted.order, commit: head, price: posted.price };
   switch (outcome.kind) {
     case "accepted": {
+      const body = reviewComment(preset2, posted, outcome, head);
+      const summarized = await summary.addRaw(body).write().then(() => true).catch((error2) => {
+        warning(`Could not write the job summary: ${String(error2)}`);
+        return false;
+      });
+      const url = await comment(token, repo, pr.number, body, mine).then(
+        (posting) => posting.html_url,
+        (error2) => {
+          if (summarized) setOutput("accepted", "true");
+          throw error2;
+        }
+      );
       setOutput("accepted", "true");
-      const body = reviewComment(preset2, posted, outcome, pr.head.sha);
-      await summary.addRaw(body).write().catch((error2) => warning(`Could not write the job summary: ${String(error2)}`));
-      const url = await comment(token, repo, pr.number, body, MARKER);
       info(`Review posted: ${url}`);
       return;
     }
     case "rejected":
+      await update(statusComment(`Jev did not accept BrainChain's review of ${short}, so it is not posted and the payment is refunded.`, paid));
       setOutput("accepted", "false");
       notice(`Jev did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset2.token} is refunded to ${account.address} on ${preset2.chain}.`);
       return;
     case "refund-failed":
+      await update(statusComment(`Jev did not accept BrainChain's review of ${short}. The refund could not be sent automatically, and BrainChain has been alerted.`, paid));
       setOutput("accepted", "false");
       throw new Error(`Jev did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
     case "failed":
+      await update(statusComment(`BrainChain did not review ${short}: the payment did not settle, so nothing was charged.`));
       throw new Error(outcome.reason);
     case "waiting":
       if (outcome.state === "unknown") {
         warning(`The payment desk has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id.`);
       } else {
-        warning(`No graded review within ${waitMinutes} minutes, so none is posted. The order keeps running: ${preset2.desk}/x402/tasks/${posted.order}`);
+        warning(`No graded review within ${waitMinutes} minutes, so none is posted. The order keeps running, and re-running this job follows it: ${preset2.desk}/x402/tasks/${posted.order}`);
       }
   }
 }
-run().catch((error2) => setFailed(error2 instanceof Error ? error2.message : String(error2)));
+
+// src/index.ts
+run().catch((error2) => setFailed(failure(error2)));

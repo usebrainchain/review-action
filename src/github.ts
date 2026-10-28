@@ -1,5 +1,14 @@
 const API = process.env.GITHUB_API_URL ?? "https://api.github.com";
 
+export class GitHubError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function call(token: string, path: string, init: RequestInit & { accept?: string } = {}): Promise<Response> {
   const response = await fetch(`${API}${path}`, {
     ...init,
@@ -12,39 +21,70 @@ async function call(token: string, path: string, init: RequestInit & { accept?: 
     },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${path}: ${(await response.text()).slice(0, 200)}`);
+  if (!response.ok) throw new GitHubError(`GitHub answered ${response.status} for ${path}: ${(await response.text()).slice(0, 200)}`, response.status);
   return response;
 }
 
-export async function diff(token: string, repo: string, number: number): Promise<string> {
-  return (await call(token, `/repos/${repo}/pulls/${number}`, { accept: "application/vnd.github.diff" })).text();
+/** The pull request's diff, or undefined when GitHub will not produce one: over 300 files or 20,000 lines. */
+export async function diff(token: string, repo: string, number: number): Promise<string | undefined> {
+  try {
+    return await (await call(token, `/repos/${repo}/pulls/${number}`, { accept: "application/vnd.github.diff" })).text();
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 406) return undefined;
+    throw error;
+  }
 }
 
-interface IssueComment {
+/** The pull request as it stands now, which may be past the event that started the run. */
+export async function pullRequest(token: string, repo: string, number: number): Promise<{ state: string; head: { sha: string } }> {
+  return (await (await call(token, `/repos/${repo}/pulls/${number}`)).json()) as { state: string; head: { sha: string } };
+}
+
+/**
+ * The login a person's token comments as. GET /user refuses the workflow token
+ * and App installation tokens, which comment as bots: undefined stands for those.
+ */
+export async function commenter(token: string): Promise<string | undefined> {
+  try {
+    const user = (await (await call(token, "/user")).json()) as { login?: unknown };
+    return typeof user.login === "string" ? user.login : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface IssueComment {
   id: number;
   body?: string;
   html_url: string;
-  user?: { type?: string };
+  user?: { login?: string; type?: string };
 }
 
-/** This action's earlier review comment on the pull request, if any. */
-export async function earlierReview(token: string, repo: string, number: number, marker: string): Promise<IssueComment | undefined> {
+/**
+ * The newest comment starting with the marker that this action's identity left:
+ * `login` for a person's token, otherwise any bot, since an App's own login
+ * cannot be read with its token. The comment records what was paid for, so no
+ * one else may write it.
+ */
+export async function ownComment(token: string, repo: string, number: number, login: string | undefined, marker: string): Promise<IssueComment | undefined> {
+  let newest: IssueComment | undefined;
   for (let page = 1; page <= 10; page++) {
     const comments = (await (await call(token, `/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`)).json()) as IssueComment[];
-    const found = comments.find((c) => c.user?.type === "Bot" && c.body?.includes(marker));
-    if (found || comments.length < 100) return found;
+    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) newest = c;
+    if (comments.length < 100) break;
   }
-  return undefined;
+  return newest;
 }
 
-/** Posts the review, or replaces this action's earlier review on the same pull request. */
-export async function comment(token: string, repo: string, number: number, body: string, marker: string): Promise<string> {
-  const earlier = await earlierReview(token, repo, number, marker);
+/** Writes over this action's earlier comment, or posts a new one when there is none or it is gone. */
+export async function comment(token: string, repo: string, number: number, body: string, earlier?: { id: number }): Promise<IssueComment> {
   if (earlier) {
-    // A review left by another bot identity cannot be edited with this token; the paid review is posted anew instead.
-    const edited = await call(token, `/repos/${repo}/issues/comments/${earlier.id}`, { method: "PATCH", body: JSON.stringify({ body }) }).catch(() => undefined);
-    if (edited) return ((await edited.json()) as IssueComment).html_url;
+    try {
+      return (await (await call(token, `/repos/${repo}/issues/comments/${earlier.id}`, { method: "PATCH", body: JSON.stringify({ body }) })).json()) as IssueComment;
+    } catch (error) {
+      // Deleted (404) or no longer this token's to edit (403): post anew. Anything else would fail a new post too.
+      if (!(error instanceof GitHubError) || (error.status !== 403 && error.status !== 404)) throw error;
+    }
   }
-  const response = await call(token, `/repos/${repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) });
-  return ((await response.json()) as IssueComment).html_url;
+  return (await (await call(token, `/repos/${repo}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) })).json()) as IssueComment;
 }

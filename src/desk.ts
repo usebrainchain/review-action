@@ -50,7 +50,7 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
     });
   } catch (error) {
     if (signed) return { order: orderId(signed), price, uncertain: true };
-    throw new Error(`${explain(error, preset)} Nothing was charged.`);
+    throw new Error(`${explain(error, preset)} Nothing was charged.`, { cause: error });
   }
 
   const reply = (await response.json().catch(() => ({}))) as { order?: unknown; error?: unknown };
@@ -60,7 +60,10 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
   // before settling. Any other answer to a signed payment may have charged it,
   // so the order is followed, never paid for again.
   if (signed && response.status !== 400 && response.status !== 402) return { order: order ?? orderId(signed), price, uncertain: true };
-  throw new Error(`${typeof reply.error === "string" ? reply.error : `The desk answered ${response.status}.`} Nothing was charged.`);
+  const error = typeof reply.error === "string" ? reply.error : undefined;
+  // A brief within 32,000 characters can still pass 64,000 bytes once encoded: non-ASCII text and escapes grow it.
+  if (response.status === 400 && error && /too large to post/i.test(error)) throw new Error("The desk refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+  throw new Error(`${error ?? `The desk answered ${response.status}.`} Nothing was charged.`);
 }
 
 function explain(error: unknown, preset: Preset): string {
@@ -110,8 +113,8 @@ export async function check(preset: Preset, order: string, fetchImpl: typeof fet
   if (view.state === "failed") return { kind: "failed", reason: "The payment did not settle. Nothing was charged." };
   if (view.state === "refund-failed") return { kind: "refund-failed", ...(taskId ? { taskId } : {}) };
   if (view.state === "refunding" || view.state === "refunded" || view.task?.accepted === false) return { kind: "rejected", ...(taskId ? { taskId } : {}) };
-  // Results are served by the desk itself; any other link is ignored.
-  if (view.result?.startsWith(`${preset.desk}/records/`)) {
+  // Only an explicit accept counts, and results are served by the desk itself; any other link is ignored.
+  if (view.task?.accepted === true && view.result?.startsWith(`${preset.desk}/records/`)) {
     const text = await fetchImpl(view.result, { signal: AbortSignal.timeout(20_000) });
     if (text.ok) return { kind: "accepted", ...(taskId ? { taskId } : {}), review: await text.text() };
   }

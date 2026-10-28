@@ -1,8 +1,8 @@
 // A pull request as a BrainChain brief. The desk takes a title of up to 120
-// characters, a brief of up to 4,000 and two or three quality levels of up to
+// characters, a brief of up to 32,000 and two or three quality levels of up to
 // 200 each, best first; the work is paid if it reaches the second level.
 
-export const LIMITS = { title: 120, brief: 4_000, level: 200 } as const;
+export const LIMITS = { title: 120, brief: 32_000, level: 200 } as const;
 
 export const LEVELS = [
   "Names real defects in the diff with file, line and a concrete fix, or correctly finds none, and invents nothing",
@@ -19,9 +19,9 @@ export interface PullRequest {
 
 /** Files whose diffs say little about correctness and crowd out the rest. */
 const NOISE = [
-  /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Gemfile\.lock|composer\.lock|go\.sum)$/,
+  /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Gemfile\.lock|composer\.lock|go\.sum|deno\.lock)$/,
   /\.min\.(js|css)$/,
-  /\.(png|jpe?g|gif|webp|ico|pdf|zip|woff2?|ttf)$/,
+  /\.(png|jpe?g|gif|webp|ico|pdf|zip|woff2?|ttf|wasm)$/,
   /(^|\/)(dist|build|vendor|node_modules)\//,
   /\.snap$/,
 ];
@@ -34,11 +34,32 @@ interface FileDiff {
 /** Splits a unified diff into one entry per file. */
 export function splitDiff(diff: string): FileDiff[] {
   const parts = diff.split(/^(?=diff --git )/m).filter((part) => part.startsWith("diff --git "));
-  return parts.map((text) => {
-    const match = /^diff --git a\/(.+?) b\/(.+)$/m.exec(text);
-    return { path: match?.[2] ?? match?.[1] ?? "", text };
-  });
+  return parts.map((text) => ({ path: newPath(text.split("\n", 1)[0]!.slice("diff --git ".length)), text }));
 }
+
+/** The b/ side of a `diff --git` line. Git quotes a path that holds a quote, a backslash, or a control or non-ASCII byte. */
+function newPath(sides: string): string {
+  const quoted = /"b\/((?:[^"\\]|\\.)*)"$/.exec(sides);
+  if (quoted) return unquote(quoted[1]!);
+  // Unrenamed, both sides name the same path, so an even split is right even when the path holds " b/".
+  const half = (sides.length - 1) / 2;
+  if (sides.startsWith("a/") && sides.slice(half).startsWith(" b/") && sides.slice(2, half) === sides.slice(half + 3)) return sides.slice(half + 3);
+  return /^(?:"a\/(?:[^"\\]|\\.)*"|a\/.+?) b\/(.+)$/.exec(sides)?.[1] ?? "";
+}
+
+const ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
+
+/** Reverses git's C-style quoting; octal escapes are UTF-8 bytes. */
+function unquote(path: string): string {
+  const bytes = path.split(/(\\[0-7]{3}|\\.)/).flatMap((part) => {
+    if (!part.startsWith("\\") || part.length < 2) return [...Buffer.from(part)];
+    return [/^\\[0-7]{3}$/.test(part) ? parseInt(part.slice(1), 8) : (ESCAPES[part[1]!] ?? part.charCodeAt(1))];
+  });
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/** Whether the file adds or removes a line. A rename, a mode change or a binary file has no hunk to review. */
+const changed = (file: FileDiff) => file.text.split(/^(?=@@ )/m).slice(1).some((hunk) => /\n[+-]/.test(hunk));
 
 /**
  * One file's changes with `context` lines kept around each change, every kept
@@ -80,7 +101,7 @@ export function compact(file: FileDiff, context = 3): string {
 
 const cut = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`);
 
-export function buildBrief(pr: PullRequest, diff: string): { title: string; brief: string; levels: string[]; skipped: string[]; truncated: boolean } {
+export function buildBrief(pr: PullRequest, diff: string): { title: string; brief: string; levels: string[]; skipped: string[]; truncated: boolean; reviewable: boolean } {
   const files = splitDiff(diff);
   const skipped = files.filter((f) => NOISE.some((pattern) => pattern.test(f.path))).map((f) => f.path);
   const kept = files.filter((f) => !skipped.includes(f.path));
@@ -114,5 +135,5 @@ export function buildBrief(pr: PullRequest, diff: string): { title: string; brie
   }
   const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : `${head}${open}${shown}${close}${truncated ? note(shown.length, body.length) : ""}`;
 
-  return { title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title), brief, levels: LEVELS, skipped, truncated };
+  return { title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title), brief, levels: LEVELS, skipped, truncated, reviewable: kept.some(changed) };
 }
