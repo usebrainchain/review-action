@@ -1,8 +1,7 @@
-# Reviews this repository's own pull requests on BrainChain testnet, paid in test USDG on Robinhood Chain testnet.
 name: Review
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, synchronize]
 
 permissions:
   contents: read
@@ -13,6 +12,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A pull request merges only with an accepted BrainChain review of its latest commit (main requires this
+  # check). A fork's pull request runs without this repository's secrets, so it gets no review and cannot
+  # merge until it is opened from a branch here.
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -20,8 +22,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # This repository reviews itself with the action as the pull request changes it, on testnet.
       - uses: ./
+        id: review
         with:
           payer-key: ${{ secrets.BRAINCHAIN_TESTNET_PAYER_KEY }}
           network: testnet
           pay-on: robinhood
+          review-bots: "true"
+      - name: Require an accepted review
+        if: steps.review.outputs.accepted != 'true'
+        run: |
+          echo "::error::No accepted BrainChain review for this commit. Re-run this job if the review is still being graded; a rejected review is refunded, and a new commit gets a new review."
+          exit 1
