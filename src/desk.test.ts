@@ -110,6 +110,11 @@ describe("quote", () => {
     expect(asked).toBe(`GET ${base.desk}/x402/tasks`);
   });
 
+  it("reads the offer from a 402 answer too", async () => {
+    const offer = { accepts: [{ network: base.network, asset: base.asset, payTo: base.payTo, amount: "1000000" }] };
+    expect(await quote(base, (async () => Response.json(offer, { status: 402 })) as typeof fetch)).toBe(1_000_000n);
+  });
+
   it("is undefined when the offer cannot be read or names another payee", async () => {
     const replies = [() => new Response("down", { status: 503 }), () => new Response("not json"), () => Response.json({ accepts: [{ network: base.network, asset: base.asset, payTo: "0x000000000000000000000000000000000000dEaD", amount: "1" }] }), () => Promise.reject(new TypeError("fetch failed"))];
     for (const reply of replies) expect(await quote(base, (async () => reply()) as typeof fetch)).toBeUndefined();

@@ -102,7 +102,8 @@ function challengePrice(response: Response, preset: Preset): bigint | undefined 
 export async function quote(preset: Preset, fetchImpl: typeof fetch = fetch): Promise<bigint | undefined> {
   try {
     const response = await fetchImpl(`${preset.desk}/x402/tasks`, { signal: AbortSignal.timeout(15_000) });
-    return response.ok ? priceIn(await response.json(), preset) : undefined;
+    // The desk answers GET with its offer as the body: 200 on older desks, 402 since it answers as an unpaid POST does.
+    return response.ok || response.status === 402 ? priceIn(await response.json(), preset) : undefined;
   } catch {
     // Without a quote, x402 still refuses a price above max-price; only the early refusal is lost.
     return undefined;

@@ -44528,7 +44528,7 @@ function challengePrice(response, preset2) {
 async function quote(preset2, fetchImpl = fetch) {
   try {
     const response = await fetchImpl(`${preset2.desk}/x402/tasks`, { signal: AbortSignal.timeout(15e3) });
-    return response.ok ? priceIn(await response.json(), preset2) : void 0;
+    return response.ok || response.status === 402 ? priceIn(await response.json(), preset2) : void 0;
   } catch {
     return void 0;
   }
