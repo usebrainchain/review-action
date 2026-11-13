@@ -165,7 +165,7 @@ describe("presets and amounts", () => {
   });
 
   it("pins mainnet payments to the BrainChain desk", () => {
-    expect(preset("mainnet", "base")).toMatchObject({ payTo: "0xafB0C4Ef895D4895040cdC6435B96D3EE8350c6E", network: "eip155:8453" });
+    expect(preset("mainnet", "base")).toMatchObject({ payTo: "0x97D558417c3D61f1074422AD843e1Db1E565b952", network: "eip155:8453" });
   });
 });
 

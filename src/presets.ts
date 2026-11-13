@@ -15,7 +15,7 @@ export interface Preset {
 
 export const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
-const MAINNET = { desk: "https://brain.usebrainchain.com", payTo: "0xafB0C4Ef895D4895040cdC6435B96D3EE8350c6E" } as const;
+const MAINNET = { desk: "https://brain.usebrainchain.com", payTo: "0x97D558417c3D61f1074422AD843e1Db1E565b952" } as const;
 const TESTNET = { desk: "https://brain.testnet.usebrainchain.com", payTo: "0xf848984c8A0D9E49Cc9C97380C62b34C6f3b97D1" } as const;
 
 const PRESETS: Record<"mainnet" | "testnet", Record<"base" | "robinhood", Preset>> = {
