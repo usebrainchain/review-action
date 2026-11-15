@@ -48,7 +48,9 @@ Use a wallet that holds only what you plan to spend on reviews. The key never le
 
 ## On the pull request
 
-The action keeps one comment per pull request. It posts a status line before paying and records the order there, so re-running the job for the same commit pays nothing. The comment becomes the review if BrainChain accepts it, or says the payment is being refunded if not. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made, the comment is removed or the previous one is put back. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. Accepted reviews are also written to the job summary.
+The action keeps one comment per pull request. The payment is signed on the runner and sent only after that comment records its order, so re-running the job for the same commit follows the order and pays nothing. If GitHub does not save the comment, the payment is not sent. The comment becomes the review if BrainChain accepts it, or says the payment is being refunded if not. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made, the comment is removed or the previous one is put back. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. The order is written to the job summary once BrainChain takes the payment, and accepted reviews are written there too.
+
+Versions up to 1.4.3 posted the status before paying and added the order after. If GitHub saved the first write but not the second, the comment names the commit without an order. For that commit, the job stops without paying, and its log says how to find the earlier order or start a new review.
 
 ## What the reviewer sees
 
@@ -97,7 +99,7 @@ The action pays nothing, and says why in the job log, for:
 
 ## Versions
 
-`@v1` always points at the latest 1.x release. To pin one release exactly, use its full commit SHA with the version as a comment, for example `usebrainchain/review-action@<commit SHA> # v1.4.3`. Dependabot's `github-actions` updates keep either form current. Each release is listed on the [releases page](https://github.com/usebrainchain/review-action/releases).
+`@v1` always points at the latest 1.x release. To pin one release exactly, use its full commit SHA with the version as a comment, for example `usebrainchain/review-action@<commit SHA> # v1.4.4`. Dependabot's `github-actions` updates keep either form current. Each release is listed on the [releases page](https://github.com/usebrainchain/review-action/releases).
 
 ## Security
 

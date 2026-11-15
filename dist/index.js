@@ -61066,8 +61066,9 @@ function amount(value) {
 // src/desk.ts
 var MAX_TIMEOUT_SECONDS = 600;
 var same = (a, b) => a.toLowerCase() === b.toLowerCase();
-async function post(preset2, account, maxPrice, brief, fetchImpl = fetch) {
+async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetch) {
   let signed;
+  let unrecorded;
   let price = maxPrice;
   let asked;
   const client = x402Client.fromConfig({
@@ -61084,6 +61085,15 @@ async function post(preset2, account, maxPrice, brief, fetchImpl = fetch) {
     signed = paymentPayload;
   });
   const observed = async (input2, init) => {
+    const payment = new Headers(init?.headers ?? (input2 instanceof Request ? input2.headers : void 0)).get("payment-signature");
+    if (payment) {
+      try {
+        await record2({ order: orderId(JSON.parse(Buffer.from(payment, "base64").toString("utf8"))), price });
+      } catch (error64) {
+        unrecorded = { error: error64 };
+        throw error64;
+      }
+    }
     const reply2 = await fetchImpl(input2, init);
     if (reply2.status === 402) asked = challengePrice(reply2, preset2);
     return reply2;
@@ -61097,6 +61107,7 @@ async function post(preset2, account, maxPrice, brief, fetchImpl = fetch) {
       signal: AbortSignal.timeout(12e4)
     });
   } catch (error64) {
+    if (unrecorded) throw unrecorded.error;
     if (signed) return { order: orderId(signed), price, uncertain: true };
     const message = (error64 instanceof Error ? error64.message : String(error64)).split("\n")[0] ?? "";
     debug(`x402: ${message}`);
@@ -61295,6 +61306,10 @@ function paidFor(body) {
   const match = recordOf(body);
   return match?.[2] ? { order: match[2], commit: match[1], price: BigInt(match[3]) } : void 0;
 }
+function orderless(body) {
+  const match = recordOf(body);
+  return match && !match[2] ? match[1] : void 0;
+}
 function recordedCommit(body) {
   return recordOf(body)?.[1] ?? reviewedCommit(body);
 }
@@ -61331,6 +61346,8 @@ function reviewComment(preset2, posted, outcome, commit) {
 var erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address, address) view returns (uint256)"]);
 var MAX_SOURCES = 20;
 var minutes = (n) => `${n} minute${n === 1 ? "" : "s"}`;
+var ATTEMPTS = 3;
+var transient = (error63) => !(error63 instanceof GitHubError) || error63.status >= 500 || error63.status === 429;
 function failure2(error63) {
   const message = (error63 instanceof Error ? error63.message : String(error63)).split("\n")[0];
   let cause = error63 instanceof Error ? error63.cause : void 0;
@@ -61409,8 +61426,22 @@ async function run() {
   }
   const earlier = mine?.body ? shownReview(mine.body) : void 0;
   const keep = (text, record2, below = "stays below until the new one is accepted") => statusComment(earlier ? `${text} The review of ${reviewedCommit(earlier)} ${below}.` : text, record2, earlier);
-  const update = (body) => comment(token, repo, pr.number, body, mine).catch((error63) => {
+  const save = async (body) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await comment(token, repo, pr.number, body, mine);
+      } catch (error63) {
+        if (attempt === ATTEMPTS || !transient(error63)) throw error63;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 2e3));
+      }
+    }
+  };
+  const update = (body) => save(body).catch((error63) => {
     warning(`Could not update the comment on the pull request: ${failure2(error63)}`);
+  });
+  const summarize = (text) => summary.addRaw(text, true).write().then(() => true).catch((error63) => {
+    warning(`Could not write the job summary: ${failure2(error63)}`);
+    return false;
   });
   let restore = earlier;
   const undo = async () => {
@@ -61425,6 +61456,10 @@ async function run() {
     posted = { order: recorded.order, price: recorded.price, uncertain: false };
     setOutput("order", posted.order);
     info(`This commit was paid for already, as order ${posted.order}. Waiting on that order; nothing more is paid.`);
+  } else if (mine?.body && orderless(mine.body) === head) {
+    throw new Error(
+      `The comment on the pull request names ${short} but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset2.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`
+    );
   } else {
     const text = await diff(token, repo, pr.number);
     if (text === void 0) {
@@ -61456,23 +61491,37 @@ async function run() {
     if (asked !== void 0 && asked > maxPrice) throw new Error(`${overPrice(preset2, asked, maxPrice)} Nothing was charged.`);
     await checkFunds(preset2, account.address, maxPrice);
     restore = mine?.body;
-    mine = await comment(token, repo, pr.number, keep(`BrainChain is reviewing ${short}.`, { commit: head }), mine).catch((error63) => {
-      throw new Error(`Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure2(error63)}`);
-    });
+    let checkpoint;
+    const record2 = async ({ order: order2, price }) => {
+      mine = await save(keep(`BrainChain is reviewing ${short}.`, { order: order2, commit: head, price })).catch((error63) => {
+        throw new Error(
+          error63 instanceof GitHubError && [401, 403, 404].includes(error63.status) ? `Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure2(error63)}` : `GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for. Re-run the job once GitHub accepts comments. ${failure2(error63)}`
+        );
+      });
+      checkpoint = order2;
+    };
     try {
-      posted = await post(preset2, account, maxPrice, brief);
+      posted = await post(preset2, account, maxPrice, brief, record2);
     } catch (error63) {
       await undo();
       throw error63;
     }
     setOutput("order", posted.order);
-    info(`Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
+    const spent = `Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}`;
+    await summarize(`${spent} for the review of ${short}: order \`${posted.order}\`.`);
+    info(`${spent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
       `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
       { order: posted.order, commit: head, price: posted.price }
     );
-    mine = await comment(token, repo, pr.number, reviewing, mine).catch((error63) => {
-      warning(`Could not record order ${posted.order} on the pull request, so a re-run of this job would pay again: ${failure2(error63)}`);
+    const order = posted.order;
+    mine = await save(reviewing).catch((error63) => {
+      if (checkpoint !== order) {
+        throw new Error(
+          `${spent} as order ${order}, but the comment on the pull request could not record it: ${failure2(error63)}. The order keeps running at ${preset2.desk}/x402/tasks/${order}; write to hello@usebrainchain.com with the order id if its review does not arrive.`
+        );
+      }
+      warning(`Could not update the comment on the pull request: ${failure2(error63)}. It records order ${order} already, so a re-run follows that order and pays nothing more.`);
       return mine;
     });
   }
@@ -61511,10 +61560,7 @@ async function run() {
   switch (outcome.kind) {
     case "accepted": {
       const body = reviewComment(preset2, posted, outcome, head);
-      const summarized = await summary.addRaw(body).write().then(() => true).catch((error63) => {
-        warning(`Could not write the job summary: ${failure2(error63)}`);
-        return false;
-      });
+      const summarized = await summarize(body);
       if (superseded) {
         if (summarized) setOutput("accepted", "true");
         notice(`The pull request moved on to ${newer.slice(0, 7)} while this review ran, so the review of ${short} is kept in this job's summary and the comment is left to the newer commit.`);
@@ -61545,7 +61591,9 @@ async function run() {
       throw new Error(outcome.reason);
     case "waiting":
       if (outcome.state === "unknown") {
-        warning(`BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id.`);
+        warning(
+          `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`
+        );
         return;
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));
