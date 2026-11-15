@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
-import { check, orderId, post, quote } from "./desk.js";
+import { check, orderId, post, quote, type Recorder } from "./desk.js";
 import { amount, preset, units } from "./presets.js";
 import { MARKER, neutralize, paidFor, recordedCommit, reviewComment, reviewedCommit, shownReview, statusComment } from "./review.js";
 
@@ -9,6 +9,8 @@ import { MARKER, neutralize, paidFor, recordedCommit, reviewComment, reviewedCom
 const account = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
 const base = preset("testnet", "base");
 const brief = { title: "Review PR #1: x", brief: "Review it.", levels: ["a", "b", "c"] };
+/** Records nothing, for tests about what the desk answers. */
+const kept: Recorder = async () => undefined;
 
 /** A desk offering USDG first and USDC second, as the real one does. */
 function desk(terms: { payTo?: string; amount?: string } = {}, paid: (payment: { payload: unknown; accepted?: { network?: string } }) => Response = (p) => Response.json({ order: orderId(p) }, { status: 202 })) {
@@ -29,47 +31,72 @@ function desk(terms: { payTo?: string; amount?: string } = {}, paid: (payment: {
 describe("post", () => {
   it("pays the Base accept with a transfer authorization and returns the order and price", async () => {
     const { fetchImpl, seen } = desk();
-    const posted = await post(base, account, units("1"), brief, fetchImpl);
+    const posted = await post(base, account, units("1"), brief, kept, fetchImpl);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.accepted?.network).toBe("eip155:84532");
     expect(seen[0]!.payload).toHaveProperty("authorization");
     expect(posted).toEqual({ order: orderId(seen[0]!), price: 1_000_000n, uncertain: false });
   });
 
+  it("records the order before the signed payment leaves, and sends it only then", async () => {
+    const events: string[] = [];
+    const { fetchImpl, seen } = desk({}, (p) => {
+      events.push(`sent ${orderId(p)}`);
+      return Response.json({ order: orderId(p) }, { status: 202 });
+    });
+    const posted = await post(base, account, units("1"), brief, async ({ order, price }) => void events.push(`recorded ${order} ${price}`), fetchImpl);
+    expect(events).toEqual([`recorded ${orderId(seen[0]!)} 1000000`, `sent ${orderId(seen[0]!)}`]);
+    expect(posted.order).toBe(orderId(seen[0]!));
+  });
+
+  it("sends nothing, and throws the recorder's error, when the order cannot be recorded", async () => {
+    const { fetchImpl, seen } = desk();
+    const refused = new Error("GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for.");
+    await expect(post(base, account, units("1"), brief, async () => Promise.reject(refused), fetchImpl)).rejects.toBe(refused);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("records nothing when it refuses to pay", async () => {
+    const recorded: string[] = [];
+    const { fetchImpl } = desk({ amount: "2000000" });
+    await expect(post(base, account, units("1"), brief, async ({ order }) => void recorded.push(order), fetchImpl)).rejects.toThrow(/Nothing was charged/);
+    expect(recorded).toEqual([]);
+  });
+
   it("pays no one but the desk, and never above max-price", async () => {
     for (const terms of [{ payTo: "0x000000000000000000000000000000000000dEaD" }, { amount: "2000000" }]) {
       const { fetchImpl, seen } = desk(terms);
-      await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow(/Nothing was charged/);
+      await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow(/Nothing was charged/);
       expect(seen).toHaveLength(0);
     }
   });
 
   it("follows the order instead of paying again when the confirmation is lost", async () => {
     const { fetchImpl, seen } = desk({}, () => new Response("{}", { status: 502 }));
-    const posted = await post(base, account, units("1"), brief, fetchImpl);
+    const posted = await post(base, account, units("1"), brief, kept, fetchImpl);
     expect(posted).toMatchObject({ order: orderId(seen[0]!), uncertain: true });
   });
 
   it("follows any reply to a signed payment other than 400 or 402, never reporting it uncharged", async () => {
     for (const reply of [new Response("not json", { status: 200 }), Response.json({ id: "x" }, { status: 202 }), new Response("{}", { status: 408 }), new Response("{}", { status: 429 })]) {
       const { fetchImpl, seen } = desk({}, () => reply.clone());
-      expect(await post(base, account, units("1"), brief, fetchImpl)).toMatchObject({ order: orderId(seen[0]!), uncertain: true });
+      expect(await post(base, account, units("1"), brief, kept, fetchImpl)).toMatchObject({ order: orderId(seen[0]!), uncertain: true });
     }
   });
 
   it("prints a desk error that is not a string as the status", async () => {
     const { fetchImpl } = desk({}, () => Response.json({ error: { code: 1 } }, { status: 400 }));
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("BrainChain answered 400. Nothing was charged.");
+    await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow("BrainChain answered 400. Nothing was charged.");
   });
 
   it("reports a refused brief as uncharged", async () => {
     const { fetchImpl } = desk({}, () => Response.json({ error: "brief must be 1 to 32,000 characters." }, { status: 400 }));
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("brief must be 1 to 32,000 characters. Nothing was charged.");
+    await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow("brief must be 1 to 32,000 characters. Nothing was charged.");
   });
 
   it("names the desk's price when it is above max-price, without x402's own wording", async () => {
     const { fetchImpl, seen } = desk({ amount: "2500000" });
-    const error = (await post(base, account, units("1"), brief, fetchImpl).catch((e: unknown) => e)) as Error;
+    const error = (await post(base, account, units("1"), brief, kept, fetchImpl).catch((e: unknown) => e)) as Error;
     expect(error.message).toBe("BrainChain charges 2.5 test USDC per review, above max-price 1. Set max-price to at least 2.5. Nothing was charged.");
     expect(error.cause).toBeUndefined();
     expect(seen).toHaveLength(0);
@@ -77,14 +104,14 @@ describe("post", () => {
 
   it("says plainly when the desk finds the brief too large to post", async () => {
     const { fetchImpl } = desk({}, () => Response.json({ error: "Task JSON is too large to post." }, { status: 400 }));
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
+    await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
   });
 
   it("ends a payment error with one period", async () => {
     const fetchImpl = (async () => {
       throw new Error("Connection reset.");
     }) as typeof fetch;
-    await expect(post(base, account, units("1"), brief, fetchImpl)).rejects.toThrow(/^The payment could not be made: Connection reset\. Nothing was charged\.$/);
+    await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow(/^The payment could not be made: Connection reset\. Nothing was charged\.$/);
   });
 
   it("keeps the network error as the cause when nothing was signed", async () => {
@@ -92,7 +119,7 @@ describe("post", () => {
     const fetchImpl = (async () => {
       throw new TypeError("fetch failed", { cause: reason });
     }) as typeof fetch;
-    const error = (await post(base, account, units("1"), brief, fetchImpl).catch((e: unknown) => e)) as Error;
+    const error = (await post(base, account, units("1"), brief, kept, fetchImpl).catch((e: unknown) => e)) as Error;
     expect(error.message).toMatch(/Nothing was charged\.$/);
     expect((error.cause as Error).cause).toBe(reason);
   });

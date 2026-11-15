@@ -88,6 +88,16 @@ export function paidFor(body: string): Paid | undefined {
   return match?.[2] ? { order: match[2] as `0x${string}`, commit: match[1]!, price: BigInt(match[3]!) } : undefined;
 }
 
+/**
+ * The commit a record names without an order. Runs before 1.4.4 wrote one
+ * before paying and added the order once paid, so it may stand for a payment
+ * whose order was lost. Runs since record the order before the payment leaves.
+ */
+export function orderless(body: string): string | undefined {
+  const match = recordOf(body);
+  return match && !match[2] ? match[1] : undefined;
+}
+
 /** The commit this action's comment is about: the one under way, or else the one its review covers. */
 export function recordedCommit(body: string): string | undefined {
   return recordOf(body)?.[1] ?? reviewedCommit(body);

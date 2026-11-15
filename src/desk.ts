@@ -22,9 +22,18 @@ export interface Posted {
   uncertain: boolean;
 }
 
-/** Pays the desk for one task. Throws only when nothing was charged. */
-export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice: bigint, brief: Brief, fetchImpl: typeof fetch = fetch): Promise<Posted> {
+/** Keeps a signed payment's order somewhere a re-run can read it. Throws when it could not. */
+export type Recorder = (signed: Pick<Posted, "order" | "price">) => Promise<void>;
+
+/**
+ * Pays the desk for one task. The signed payment is sent only once `record`
+ * has kept its order, so a run that stops at any point after leaves the order
+ * behind for the next one. Throws only when nothing was charged.
+ */
+export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice: bigint, brief: Brief, record: Recorder, fetchImpl: typeof fetch = fetch): Promise<Posted> {
   let signed: { payload: unknown } | undefined;
+  /** Why the order could not be recorded, which kept the payment from being sent. */
+  let unrecorded: { error: unknown } | undefined;
   let price = maxPrice;
   let asked: bigint | undefined;
   const client = x402Client.fromConfig({
@@ -44,6 +53,16 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
 
   // The price is read off the 402 challenge: x402 refuses a price above max-price without saying what it was.
   const observed: typeof fetch = async (input, init) => {
+    // The desk names the order after the payment in this header, so it is known before the request leaves.
+    const payment = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get("payment-signature");
+    if (payment) {
+      try {
+        await record({ order: orderId(JSON.parse(Buffer.from(payment, "base64").toString("utf8")) as { payload: unknown }), price });
+      } catch (error) {
+        unrecorded = { error };
+        throw error;
+      }
+    }
     const reply = await fetchImpl(input, init);
     if (reply.status === 402) asked = challengePrice(reply, preset);
     return reply;
@@ -57,6 +76,7 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
       signal: AbortSignal.timeout(120_000),
     });
   } catch (error) {
+    if (unrecorded) throw unrecorded.error;
     if (signed) return { order: orderId(signed), price, uncertain: true };
     const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
     // x402's own wording names its settings, not this action's inputs, so it goes to the debug log only.

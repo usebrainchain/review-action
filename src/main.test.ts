@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Recorder } from "./desk.js";
 import { failure, run } from "./main.js";
 import { preset } from "./presets.js";
 import { paidFor, reviewComment, shownReview, statusComment } from "./review.js";
@@ -62,6 +63,21 @@ const ORDER = `0x${"ab".repeat(32)}` as const;
 const DIFF = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
 const PAID = { order: ORDER, commit: SHA, price: 1_000_000n };
 
+/** The desk's post as the action sees it: the order is recorded before the signed payment is sent, then the desk takes it. */
+const pays =
+  (order: `0x${string}` = ORDER, wait = 0) =>
+  async (_preset: unknown, _account: unknown, _maxPrice: unknown, _brief: unknown, record: Recorder) => {
+    await record({ order, price: 1_000_000n });
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    state.log.push("pay");
+    return { order, price: 1_000_000n, uncertain: false };
+  };
+/** A signed payment the desk refuses before settling it: recorded, then nothing charged. */
+const refuses = (message: string) => async (_preset: unknown, _account: unknown, _maxPrice: unknown, _brief: unknown, record: Recorder) => {
+  await record({ order: ORDER, price: 1_000_000n });
+  throw new Error(message);
+};
+
 /** A pull request's comments and state, served the way GitHub's REST API serves them. */
 let gh: {
   login?: string;
@@ -69,8 +85,8 @@ let gh: {
   pr: { state: string; head: { sha: string } };
   diff: string | number;
   postStatus?: number;
-  /** A status every comment PATCH answers with, instead of saving the comment. */
-  patchStatus?: number;
+  /** A status every comment PATCH answers with instead of saving the comment; a list answers one status per PATCH, then saves. */
+  patchStatus?: number | number[];
   /** Files at the head commit, served by the contents API. */
   files: Record<string, string>;
 };
@@ -91,7 +107,10 @@ function stubGitHub() {
       return Response.json(gh.comments.map((c) => ({ id: c.id, body: c.body, html_url: `https://gh/c/${c.id}`, user: { login: c.login, type: c.login.endsWith("[bot]") ? "Bot" : "User" } })));
     }
     if (pathname === "/repos/acme/api/issues/3/comments" && method === "POST") {
-      if (gh.postStatus) return new Response("Resource not accessible by integration", { status: gh.postStatus });
+      if (gh.postStatus) {
+        state.log.push(`post refused ${gh.postStatus}`);
+        return new Response("Resource not accessible by integration", { status: gh.postStatus });
+      }
       const c = { id: 100 + gh.comments.length, body: (JSON.parse(String(init.body)) as { body: string }).body, login: gh.login ?? "github-actions[bot]" };
       gh.comments.push(c);
       state.log.push(`post ${visible(c.body)}`);
@@ -103,7 +122,11 @@ function stubGitHub() {
     }
     const edited = gh.comments.find((c) => pathname === `/repos/acme/api/issues/comments/${c.id}`);
     if (edited && method === "PATCH") {
-      if (gh.patchStatus) return new Response("Service Unavailable", { status: gh.patchStatus });
+      const refused = Array.isArray(gh.patchStatus) ? gh.patchStatus.shift() : gh.patchStatus;
+      if (refused) {
+        state.log.push(`edit refused ${refused}`);
+        return new Response("Service Unavailable", { status: refused });
+      }
       edited.body = (JSON.parse(String(init.body)) as { body: string }).body;
       state.log.push(`edit ${visible(edited.body)}`);
       return write(edited);
@@ -152,10 +175,7 @@ beforeEach(() => {
     summary: [],
   });
   gh = { comments: [], pr: { state: "open", head: { sha: SHA } }, diff: DIFF, files: {} };
-  desk.post.mockReset().mockImplementation(async () => {
-    state.log.push("pay");
-    return { order: ORDER, price: 1_000_000n, uncertain: false };
-  });
+  desk.post.mockReset().mockImplementation(pays());
   desk.check.mockReset().mockResolvedValue({ kind: "accepted", taskId: "4", review: "Looks correct." });
   desk.quote.mockReset().mockResolvedValue(1_000_000n);
   event();
@@ -189,18 +209,87 @@ describe("paying once per commit", () => {
   // Reported by epistemedeus in #16, with this test.
   it("does not pay again on a re-run when GitHub fails to save the order after the desk took the payment (#16)", async () => {
     const nextOrder = `0x${"cd".repeat(32)}` as const;
-    desk.post.mockResolvedValueOnce({ order: ORDER, price: 1_000_000n, uncertain: false });
-    desk.post.mockResolvedValueOnce({ order: nextOrder, price: 1_000_000n, uncertain: false });
+    desk.post.mockImplementationOnce(pays(ORDER)).mockImplementationOnce(pays(nextOrder));
     desk.check.mockResolvedValue({ kind: "waiting", state: "paid" });
     gh.patchStatus = 503;
     await go();
     expect(state.outputs.order).toBe(ORDER);
-    expect(gh.comments[0]!.body).toContain(`<!-- brainchain commit=${SHA}`);
+    expect(state.summary[0]).toContain(ORDER);
+    expect(state.warnings).toContain(
+      "Could not update the comment on the pull request: GitHub answered 503 for /repos/acme/api/issues/comments/100: Service Unavailable. It records order " +
+        `${ORDER} already, so a re-run follows that order and pays nothing more.`,
+    );
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
     gh.patchStatus = undefined;
     state.outputs = {};
     await go();
     expect(desk.post).toHaveBeenCalledTimes(1);
     expect(desk.check).toHaveBeenLastCalledWith(expect.anything(), ORDER);
+  });
+
+  it("holds a commit named without an order, as runs before 1.4.4 left it, and pays nothing", async () => {
+    const legacy = statusComment("BrainChain is reviewing aaaaaaa.", { commit: SHA });
+    gh.comments = [{ id: 1, login: "github-actions[bot]", body: legacy }];
+    await expect(go()).rejects.toThrow(
+      `The comment on the pull request names aaaaaaa but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset("testnet", "base").desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
+    );
+    expect(desk.post).not.toHaveBeenCalled();
+    expect(desk.quote).not.toHaveBeenCalled();
+    expect(state.log).toEqual([]);
+    expect(gh.comments[0]!.body).toBe(legacy);
+  });
+
+  it("pays for a new commit when an older one is named without an order", async () => {
+    gh.comments = [{ id: 1, login: "github-actions[bot]", body: statusComment("BrainChain is reviewing bbbbbbb.", { commit: "b".repeat(40) }) }];
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+  });
+
+  it("writes the order to the job summary as soon as the desk takes the payment", async () => {
+    desk.check.mockResolvedValue({ kind: "waiting", state: "hired" });
+    await go();
+    expect(state.summary).toEqual([`Paid 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`]);
+  });
+
+  it("tries the comment that records the order again when GitHub fails, and pays once it is saved", async () => {
+    gh.comments = [{ id: 1, login: "github-actions[bot]", body: statusComment("BrainChain is reviewing bbbbbbb.", { ...PAID, commit: "b".repeat(40) }) }];
+    gh.patchStatus = [503, 502];
+    await go();
+    expect(state.log.slice(0, 5)).toEqual(["read balanceOf", "edit refused 503", "edit refused 502", "edit BrainChain is reviewing aaaaaaa.", "pay"]);
+    expect(desk.post).toHaveBeenCalledTimes(1);
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+  });
+
+  it("fails without sending the payment when GitHub will not save the comment that records the order", async () => {
+    const older = statusComment("BrainChain is reviewing bbbbbbb.", { ...PAID, commit: "b".repeat(40) });
+    gh.comments = [{ id: 1, login: "github-actions[bot]", body: older }];
+    gh.patchStatus = 503;
+    await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for\. Re-run the job once GitHub accepts comments\. GitHub answered 503/);
+    expect(state.log).toEqual(["read balanceOf", "edit refused 503", "edit refused 503", "edit refused 503", "edit refused 503"]);
+    expect(gh.comments[0]!.body).toBe(older);
+    expect(state.outputs.order).toBeUndefined();
+
+    gh.comments = [];
+    gh.patchStatus = undefined;
+    gh.postStatus = 502;
+    state.log = [];
+    await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent/);
+    expect(state.log).toEqual(["read balanceOf", "post refused 502", "post refused 502", "post refused 502"]);
+    expect(gh.comments).toEqual([]);
+  });
+
+  it("fails naming the order when the desk names another order and the comment cannot record it", async () => {
+    const other = `0x${"ef".repeat(32)}` as const;
+    desk.post.mockImplementation(async (_preset: unknown, _account: unknown, _maxPrice: unknown, _brief: unknown, record: Recorder) => {
+      await record({ order: ORDER, price: 1_000_000n });
+      gh.patchStatus = 503;
+      return { order: other, price: 1_000_000n, uncertain: false };
+    });
+    await expect(go()).rejects.toThrow(`Paid 1 test USDC on Base Sepolia as order ${other}, but the comment on the pull request could not record it`);
+    expect(state.outputs.order).toBe(other);
+    expect(state.summary[0]).toContain(other);
+    expect(desk.check).not.toHaveBeenCalled();
   });
 
   it("follows the recorded order on a re-run and pays nothing", async () => {
@@ -262,15 +351,15 @@ describe("paying once per commit", () => {
   it("pays nothing when it cannot comment", async () => {
     gh.postStatus = 403;
     await expect(go()).rejects.toThrow(/Could not comment on the pull request, so no review was paid for\. The github-token needs pull-requests: write\./);
-    expect(desk.post).not.toHaveBeenCalled();
+    expect(state.log).toEqual(["read balanceOf", "post refused 403"]);
   });
 
   it("takes away the comment it made when the payment is not made, or when it does not settle", async () => {
-    desk.post.mockRejectedValue(new Error("The desk answered 402. Nothing was charged."));
+    desk.post.mockImplementation(refuses("The desk answered 402. Nothing was charged."));
     await expect(go()).rejects.toThrow("The desk answered 402. Nothing was charged.");
     expect(state.log.slice(-2)).toEqual(["post BrainChain is reviewing aaaaaaa.", "delete 100"]);
     expect(gh.comments).toEqual([]);
-    desk.post.mockResolvedValue({ order: ORDER, price: 1_000_000n, uncertain: false });
+    desk.post.mockImplementation(pays());
     desk.check.mockResolvedValue({ kind: "failed", reason: "The payment did not settle. Nothing was charged." });
     await expect(go()).rejects.toThrow("The payment did not settle.");
     expect(gh.comments).toEqual([]);
@@ -290,10 +379,7 @@ describe("paying once per commit", () => {
   });
 
   it("counts wait-minutes from the start of the job, payment included", async () => {
-    desk.post.mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 45_000));
-      return { order: ORDER, price: 1_000_000n, uncertain: false };
-    });
+    desk.post.mockImplementation(pays(ORDER, 45_000));
     desk.check.mockResolvedValue({ kind: "waiting", state: "hired" });
     await go();
     expect(desk.check).toHaveBeenCalledTimes(1);
@@ -331,7 +417,7 @@ describe("the earlier review", () => {
   });
 
   it("is put back exactly when the payment is not made", async () => {
-    desk.post.mockRejectedValue(new Error("The desk answered 402. Nothing was charged."));
+    desk.post.mockImplementation(refuses("The desk answered 402. Nothing was charged."));
     await expect(go()).rejects.toThrow("Nothing was charged.");
     expect(gh.comments).toEqual([{ id: 1, login: "github-actions[bot]", body: earlier }]);
   });
@@ -354,7 +440,7 @@ describe("a review overtaken by a newer commit", () => {
     });
     await go();
     expect(gh.comments[0]!.body).toBe(newer);
-    expect(state.summary[0]).toContain("Looks correct.");
+    expect(state.summary.at(-1)).toContain("Looks correct.");
     expect(state.outputs.accepted).toBe("true");
     expect(state.notices.at(-1)).toBe("The pull request moved on to ccccccc while this review ran, so the review of aaaaaaa is kept in this job's summary and the comment is left to the newer commit.");
   });
