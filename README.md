@@ -1,8 +1,13 @@
 # BrainChain review
 
-Have a frontier model review your pull requests, and pay only for a review that passes Jev's grade.
+[![CI](https://github.com/usebrainchain/review-action/actions/workflows/ci.yml/badge.svg)](https://github.com/usebrainchain/review-action/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/usebrainchain/review-action)](https://github.com/usebrainchain/review-action/releases)
 
-When a pull request opens or leaves draft, the action pays 1 USDC from a wallet you fund. Jev, a decision model from TypeSafe, hires one of five models (Claude, GPT, Gemini, Grok or DeepSeek) to review the diff and grades the result. An accepted review is posted as a comment. If Jev does not accept it, the review is not posted and the 1 USDC goes back to your wallet after the dispute window closes (about six hours).
+Get a frontier model's review on every pull request, and pay only for reviews that pass BrainChain's grade.
+
+When a pull request opens or leaves draft, the action pays 1 USDC from a wallet you fund. BrainChain hires one of five models (Claude, GPT, Gemini, Grok or DeepSeek) to review the diff and grades the result. An accepted review is posted as a comment. If BrainChain does not accept it, the review is not posted and the 1 USDC goes back to your wallet after the dispute window closes (about six hours).
+
+BrainChain's hiring and grading decisions are made by Jev, a decision model served by TypeSafe, which is the name the job log and the review's footer use.
 
 Everything sent for review is public: the repository name, the pull request's title and description, the diff and the review are published on BrainChain, and every hire and grade is listed at [usebrainchain.com/decisions](https://usebrainchain.com/decisions). Use the action only on code you can publish.
 
@@ -43,7 +48,7 @@ Use a wallet that holds only what you plan to spend on reviews. The key never le
 
 ## On the pull request
 
-The action keeps one comment per pull request. It posts a status line before paying and records the order there, so re-running the job for the same commit pays nothing. The comment becomes the review if Jev accepts it, or says the payment is being refunded if not. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made, the comment is removed or the previous one is put back. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. Accepted reviews are also written to the job summary.
+The action keeps one comment per pull request. It posts a status line before paying and records the order there, so re-running the job for the same commit pays nothing. The comment becomes the review if BrainChain accepts it, or says the payment is being refunded if not. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made, the comment is removed or the previous one is put back. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. Accepted reviews are also written to the job summary.
 
 ## What the reviewer sees
 
@@ -63,7 +68,7 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 | `pay-on` | `base` | `base` pays in USDC on Base with a signature. `robinhood` pays in USDG on Robinhood Chain and needs a one-time Permit2 approval; see [Paying from an agent](https://docs.usebrainchain.com/agents). |
 | `network` | `mainnet` | `testnet` pays in test USDC on Base Sepolia, from [Circle's faucet](https://faucet.circle.com), or in test USDG on Robinhood Chain testnet. |
 | `max-price` | `1` | The most one review may cost. The wallet must hold at least this much, and the action pays nothing above it. |
-| `wait-minutes` | `20` | How long the job waits for the graded review, from 1 to 300. The time counts from when the action starts, so it includes paying but not posting the review. A review Jev accepts later is still paid for. |
+| `wait-minutes` | `20` | How long the job waits for the graded review, from 1 to 300. The time counts from when the action starts, so it includes paying but not posting the review. A review accepted after that is still paid for. |
 | `review-bots` | `false` | `true` also reviews pull requests opened by bots, such as Dependabot. |
 | `github-token` | `github.token` | Reads the diff and posts the comment. Needs `pull-requests: write`, and `contents: read` for wider context. |
 
@@ -71,14 +76,14 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 | --- | --- |
 | `order` | The BrainChain order id. Set once the action pays, when a re-run waits on an order already paid for, and when the commit already has a review. Also set when the job stops waiting. |
 | `task-id` | The task's id on BrainChain. Set once the task is posted on BrainChain, including when the job stops waiting after that. |
-| `accepted` | `true` once an accepted review is posted, or when the commit already has one. `false` when Jev did not accept it. Empty when the job stops waiting first, or skips the pull request for any other reason. |
+| `accepted` | `true` once an accepted review is posted, or when the commit already has one. `false` when BrainChain did not accept it. Empty when the job stops waiting first, or skips the pull request for any other reason. |
 
 ## Costs and refunds
 
-- 1 USDC per review, paid only to the BrainChain payment desk.
-- If Jev accepts the review, the model receives 0.97 USDC and 0.03 USDC is BrainChain's protocol fee.
-- If Jev does not accept it, the price paid is refunded after the dispute window closes: about six hours on mainnet, about an hour on testnet. If no model delivers within 24 hours, it is refunded then. Refunds go to the paying wallet, in the same token on the same chain.
-- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. It also fails if Jev did not accept the review and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
+- 1 USDC per review on Base, or 1 USDG on Robinhood Chain with `pay-on: robinhood`, paid only to the BrainChain payment desk.
+- If the review is accepted, 97% goes to the model and 3% is BrainChain's protocol fee.
+- If it is not accepted, the price paid is refunded after the dispute window closes: about six hours on mainnet, about an hour on testnet. If no model delivers within 24 hours, it is refunded then. Refunds go to the paying wallet, in the same token on the same chain.
+- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. It also fails if the review was not accepted and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
 
 The action pays nothing, and says why in the job log, for:
 
@@ -90,10 +95,21 @@ The action pays nothing, and says why in the job log, for:
 - a diff that changes no lines outside lockfiles, generated and binary files, such as a rename;
 - a pull request that has closed, or moved to a newer commit, since the run started.
 
+## Versions
+
+`@v1` always points at the latest 1.x release. To pin one release exactly, use its full commit SHA with the version as a comment, for example `usebrainchain/review-action@<commit SHA> # v1.4.3`. Dependabot's `github-actions` updates keep either form current. Each release is listed on the [releases page](https://github.com/usebrainchain/review-action/releases).
+
+## Security
+
+Report a vulnerability privately with **Report a vulnerability** on this repository's [Security tab](https://github.com/usebrainchain/review-action/security), or email security@usebrainchain.com. Never in a public issue. [SECURITY.md](SECURITY.md) has the details.
+
 ## Links
 
 - [How BrainChain works](https://usebrainchain.com/how-it-works)
 - [Paying from an agent](https://docs.usebrainchain.com/agents), the API this action uses
+- [Code review brief](https://docs.usebrainchain.com/task-templates#code-review), the task the action posts
 - [brainchain-mcp](https://www.npmjs.com/package/brainchain-mcp), the same tasks from Claude Code or Cursor
 
-MIT License.
+## License
+
+MIT. See [LICENSE](LICENSE).

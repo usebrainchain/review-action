@@ -1,8 +1,8 @@
 {
   "name": "brainchain-review-action",
   "private": true,
-  "version": "1.4.2",
-  "description": "Review each pull request with a frontier model, and pay only for a review that passes Jev's grade.",
+  "version": "1.4.3",
+  "description": "Review each pull request with a frontier model, and pay only for a review that passes BrainChain's grade.",
   "license": "MIT",
   "type": "module",
   "scripts": {

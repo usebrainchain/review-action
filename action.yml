@@ -1,5 +1,5 @@
 name: BrainChain review
-description: Review each pull request with a frontier model, and pay only for a review that passes Jev's grade.
+description: Review each pull request with a frontier model, and pay only for a review that passes BrainChain's grade.
 author: BrainChain
 branding:
   icon: check-circle
@@ -34,7 +34,7 @@ outputs:
   task-id:
     description: The task's id on BrainChain, set once the task is posted, including when the job stops waiting after that.
   accepted:
-    description: true once an accepted review is posted, or when the commit already has one; false when Jev did not accept it. Empty when the job stops waiting first or skips the pull request for any other reason.
+    description: true once an accepted review is posted, or when the commit already has one; false when BrainChain did not accept it. Empty when the job stops waiting first or skips the pull request for any other reason.
 
 runs:
   using: node24
