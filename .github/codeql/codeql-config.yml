@@ -1,0 +1,4 @@
+name: CodeQL
+# dist/ is the esbuild bundle of src/ and its dependencies; the source is what gets analysed.
+paths-ignore:
+  - dist
