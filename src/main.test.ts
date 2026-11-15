@@ -69,6 +69,8 @@ let gh: {
   pr: { state: string; head: { sha: string } };
   diff: string | number;
   postStatus?: number;
+  /** A status every comment PATCH answers with, instead of saving the comment. */
+  patchStatus?: number;
   /** Files at the head commit, served by the contents API. */
   files: Record<string, string>;
 };
@@ -101,6 +103,7 @@ function stubGitHub() {
     }
     const edited = gh.comments.find((c) => pathname === `/repos/acme/api/issues/comments/${c.id}`);
     if (edited && method === "PATCH") {
+      if (gh.patchStatus) return new Response("Service Unavailable", { status: gh.patchStatus });
       edited.body = (JSON.parse(String(init.body)) as { body: string }).body;
       state.log.push(`edit ${visible(edited.body)}`);
       return write(edited);
@@ -181,6 +184,23 @@ describe("paying once per commit", () => {
     ]);
     expect(gh.comments).toHaveLength(1);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+  });
+
+  // Reported by epistemedeus in #16, with this test.
+  it("does not pay again on a re-run when GitHub fails to save the order after the desk took the payment (#16)", async () => {
+    const nextOrder = `0x${"cd".repeat(32)}` as const;
+    desk.post.mockResolvedValueOnce({ order: ORDER, price: 1_000_000n, uncertain: false });
+    desk.post.mockResolvedValueOnce({ order: nextOrder, price: 1_000_000n, uncertain: false });
+    desk.check.mockResolvedValue({ kind: "waiting", state: "paid" });
+    gh.patchStatus = 503;
+    await go();
+    expect(state.outputs.order).toBe(ORDER);
+    expect(gh.comments[0]!.body).toContain(`<!-- brainchain commit=${SHA}`);
+    gh.patchStatus = undefined;
+    state.outputs = {};
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+    expect(desk.check).toHaveBeenLastCalledWith(expect.anything(), ORDER);
   });
 
   it("follows the recorded order on a re-run and pays nothing", async () => {
