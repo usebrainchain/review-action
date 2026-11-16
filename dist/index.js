@@ -61618,7 +61618,15 @@ async function run() {
       return;
     }
     case "rejected":
-      if (!superseded) await update(keep(`Jev did not accept the review of ${short}, so it is not posted and the payment is being refunded.`, paid, "is below"));
+      if (!superseded) {
+        await update(
+          keep(
+            `Jev did not accept the review of ${short}, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.`,
+            paid,
+            "is below"
+          )
+        );
+      }
       setOutput("accepted", "false");
       notice(`Jev did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset2.token} is being refunded to ${account.address} on ${preset2.chain}.`);
       return;

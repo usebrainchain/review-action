@@ -357,7 +357,7 @@ describe("paying once per commit", () => {
     await go();
     expect(desk.post).not.toHaveBeenCalled();
     expect(desk.check).toHaveBeenCalledWith(expect.anything(), ORDER);
-    expect(state.log).toEqual([`output order=${ORDER}`, "output task-id=4", "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded.", "output accepted=false"]);
+    expect(state.log).toEqual([`output order=${ORDER}`, "output task-id=4", "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.", "output accepted=false"]);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
     expect(state.notices[0]).toMatch(/the 1 test USDC is being refunded/);
   });
@@ -486,7 +486,7 @@ describe("the earlier review", () => {
     expect(state.log.filter((line) => line.startsWith("edit"))).toEqual([
       "edit BrainChain is reviewing aaaaaaa. The review of bbbbbbb stays below until the new one is accepted.",
       `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded. The review of bbbbbbb stays below until the new one is accepted.`,
-      "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. The review of bbbbbbb is below.",
+      "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push. The review of bbbbbbb is below.",
     ]);
     expect(shownReview(gh.comments[0]!.body)).toBe(earlier);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
