@@ -81,6 +81,8 @@ const refuses = (message: string) => async (_preset: unknown, _account: unknown,
 /** A pull request's comments and state, served the way GitHub's REST API serves them. */
 let gh: {
   login?: string;
+  /** A status GET /user answers with instead of the login. */
+  userStatus?: number;
   comments: { id: number; body: string; login: string }[];
   pr: { state: string; head: { sha: string } };
   diff: string | number;
@@ -98,7 +100,10 @@ function stubGitHub() {
     const { pathname } = new URL(input);
     const method = init.method ?? "GET";
     const write = (c: { id: number; body: string }) => Response.json({ id: c.id, body: c.body, html_url: `https://gh/c/${c.id}` });
-    if (pathname === "/user") return gh.login ? Response.json({ login: gh.login }) : new Response("Resource not accessible by integration", { status: 403 });
+    if (pathname === "/user") {
+      if (gh.userStatus) return new Response("Service Unavailable", { status: gh.userStatus });
+      return gh.login ? Response.json({ login: gh.login }) : new Response("Resource not accessible by integration", { status: 403 });
+    }
     if (pathname === "/repos/acme/api/pulls/3") {
       if (new Headers(init.headers).get("accept") !== "application/vnd.github.diff") return Response.json(gh.pr);
       return typeof gh.diff === "number" ? new Response("{}", { status: gh.diff }) : new Response(gh.diff);
@@ -314,6 +319,16 @@ describe("paying once per commit", () => {
     gh.comments = [{ id: 1, login: author, body: statusComment("BrainChain is reviewing aaaaaaa.", PAID) }];
     await go();
     expect(desk.post).toHaveBeenCalledTimes(pays ? 1 : 0);
+  });
+
+  it("fails before paying when GitHub does not say which login a person's token comments as", async () => {
+    gh.login = "octo";
+    gh.userStatus = 502;
+    gh.comments = [{ id: 1, login: "octo", body: statusComment("BrainChain is reviewing aaaaaaa.", PAID) }];
+    await expect(go()).rejects.toThrow(/GitHub answered 502 for \/user/);
+    expect(desk.post).not.toHaveBeenCalled();
+    expect(desk.check).not.toHaveBeenCalled();
+    expect(state.log).toEqual([]);
   });
 
   it("pays for a new commit even when an older one is recorded", async () => {

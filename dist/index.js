@@ -61217,8 +61217,9 @@ async function commenter(token) {
   try {
     const user = await (await call2(token, "/user")).json();
     return typeof user.login === "string" ? user.login : void 0;
-  } catch {
-    return void 0;
+  } catch (error63) {
+    if (error63 instanceof GitHubError && (error63.status === 401 || error63.status === 403)) return void 0;
+    throw error63;
   }
 }
 async function ownComment(token, repo, number4, login, marker) {

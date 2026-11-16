@@ -43,13 +43,16 @@ export async function pullRequest(token: string, repo: string, number: number): 
 /**
  * The login a person's token comments as. GET /user refuses the workflow token
  * and App installation tokens, which comment as bots: undefined stands for those.
+ * Any other failure throws, since a person's token taken for a bot would miss
+ * that person's own record and pay again.
  */
 export async function commenter(token: string): Promise<string | undefined> {
   try {
     const user = (await (await call(token, "/user")).json()) as { login?: unknown };
     return typeof user.login === "string" ? user.login : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error instanceof GitHubError && (error.status === 401 || error.status === 403)) return undefined;
+    throw error;
   }
 }
 

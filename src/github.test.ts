@@ -71,6 +71,15 @@ describe("commenter", () => {
     expect(await commenter("t")).toBe("octo");
     github({ GET: () => new Response("Resource not accessible by integration", { status: 403 }) });
     expect(await commenter("t")).toBeUndefined();
+    github({ GET: () => new Response("Bad credentials", { status: 401 }) });
+    expect(await commenter("t")).toBeUndefined();
+  });
+
+  it("fails when GitHub fails or does not answer, instead of taking the token for a bot", async () => {
+    github({ GET: () => new Response("down", { status: 502 }) });
+    await expect(commenter("t")).rejects.toThrow(/GitHub answered 502 for \/user/);
+    vi.stubGlobal("fetch", async () => Promise.reject(new TypeError("fetch failed")));
+    await expect(commenter("t")).rejects.toThrow("fetch failed");
   });
 });
 
