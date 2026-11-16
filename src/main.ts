@@ -130,8 +130,12 @@ export async function run(): Promise<void> {
       try {
         return await comment(token, repo, pr.number, body, mine);
       } catch (error) {
-        if (attempt === ATTEMPTS || !transient(error)) throw error;
-        await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+        if (!transient(error)) throw error;
+        if (attempt < ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+        // GitHub may have saved a new comment without answering. Taking it up makes the retry edit it instead of
+        // posting a second, and lets undo() remove it when the payment is not sent.
+        if (!mine) mine = await ownComment(token, repo, pr.number, login, MARKER).catch(() => undefined);
+        if (attempt === ATTEMPTS) throw error;
       }
     }
   };

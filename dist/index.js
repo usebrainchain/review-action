@@ -61451,8 +61451,10 @@ async function run() {
       try {
         return await comment(token, repo, pr.number, body, mine);
       } catch (error63) {
-        if (attempt === ATTEMPTS || !transient(error63)) throw error63;
-        await new Promise((resolve) => setTimeout(resolve, attempt * 2e3));
+        if (!transient(error63)) throw error63;
+        if (attempt < ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, attempt * 2e3));
+        if (!mine) mine = await ownComment(token, repo, pr.number, login, MARKER).catch(() => void 0);
+        if (attempt === ATTEMPTS) throw error63;
       }
     }
   };

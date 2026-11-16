@@ -86,8 +86,8 @@ let gh: {
   comments: { id: number; body: string; login: string }[];
   pr: { state: string; head: { sha: string } };
   diff: string | number;
-  /** A status every comment POST answers with instead of saving the comment; a list answers one status per POST, then saves. */
-  postStatus?: number | number[];
+  /** A status every comment POST answers with instead of saving the comment; a list answers one status per POST, then saves. "lost" saves the comment and drops the answer. */
+  postStatus?: number | (number | "lost")[];
   /** Refusals come as GitHub's rate limit sends them. */
   limited?: boolean;
   /** A status every comment PATCH answers with instead of saving the comment; a list answers one status per PATCH, then saves. */
@@ -116,13 +116,17 @@ function stubGitHub() {
     }
     if (pathname === "/repos/acme/api/issues/3/comments" && method === "POST") {
       const refused = Array.isArray(gh.postStatus) ? gh.postStatus.shift() : gh.postStatus;
-      if (refused) {
+      if (typeof refused === "number" && refused) {
         state.log.push(`post refused ${refused}`);
         if (gh.limited) return new Response("API rate limit exceeded", { status: refused, headers: { "x-ratelimit-remaining": "0" } });
         return new Response("Resource not accessible by integration", { status: refused });
       }
       const c = { id: 100 + gh.comments.length, body: (JSON.parse(String(init.body)) as { body: string }).body, login: gh.login ?? "github-actions[bot]" };
       gh.comments.push(c);
+      if (refused === "lost") {
+        state.log.push(`post lost ${visible(c.body)}`);
+        throw new TypeError("fetch failed", { cause: new Error("The operation was aborted due to timeout") });
+      }
       state.log.push(`post ${visible(c.body)}`);
       return write(c);
     }
@@ -299,6 +303,29 @@ describe("paying once per commit", () => {
     gh.comments = [];
     gh.postStatus = 403;
     await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for\. Re-run the job once GitHub accepts comments\. GitHub answered 403 \(rate limited\)/);
+  });
+
+  it("edits the comment GitHub saved without answering, instead of posting a second", async () => {
+    gh.postStatus = ["lost"];
+    await go();
+    expect(state.log.slice(0, 4)).toEqual(["read balanceOf", "post lost BrainChain is reviewing aaaaaaa.", "edit BrainChain is reviewing aaaaaaa.", "pay"]);
+    expect(gh.comments).toHaveLength(1);
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+  });
+
+  it("removes a comment GitHub saved without answering when the payment is not sent, so a re-run waits on no order", async () => {
+    gh.postStatus = ["lost"];
+    gh.patchStatus = 503;
+    await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent/);
+    expect(state.log).toEqual(["read balanceOf", "post lost BrainChain is reviewing aaaaaaa.", "edit refused 503", "edit refused 503", "delete 100"]);
+    expect(gh.comments).toEqual([]);
+
+    gh.patchStatus = undefined;
+    gh.postStatus = [502, 502, "lost"];
+    state.log = [];
+    await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent/);
+    expect(state.log).toEqual(["read balanceOf", "post refused 502", "post refused 502", "post lost BrainChain is reviewing aaaaaaa.", "delete 100"]);
+    expect(gh.comments).toEqual([]);
   });
 
   it("fails naming the order when the desk names another order and the comment cannot record it", async () => {
