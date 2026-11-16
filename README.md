@@ -42,7 +42,7 @@ jobs:
           payer-key: ${{ secrets.BRAINCHAIN_PAYER_KEY }}
 ```
 
-Add `synchronize` to `types` to review again after each push. A run whose commit is no longer the head pays nothing, and a run that has paid finishes even if you push again. If the pull request returns to a commit that was reviewed before a newer one, that commit is paid for again. The `concurrency` group runs one review job at a time for each pull request.
+Add `synchronize` to `types` to review again after each push. A run whose commit is no longer the head pays nothing, and a run that has paid finishes even if you push again. If the pull request returns to a commit that was reviewed before a newer one, that commit is paid for again. The `concurrency` group runs one review job at a time for each pull request, and it is what stops two runs for the same commit from both paying, so keep it.
 
 Use a wallet that holds only what you plan to spend on reviews. The key never leaves the runner: the action signs each payment locally.
 
