@@ -77,7 +77,10 @@ export async function run(): Promise<void> {
   const started = Date.now();
   const path = process.env.GITHUB_EVENT_PATH;
   const eventName = process.env.GITHUB_EVENT_NAME;
-  const pr = path && (eventName === "pull_request" || eventName === "pull_request_target") ? (JSON.parse(readFileSync(path, "utf8")) as PullRequestEvent).pull_request : undefined;
+  if (eventName && eventName !== "pull_request" && eventName !== "pull_request_target") {
+    throw new Error(`Started by ${eventName}; this action reviews pull requests (pull_request or pull_request_target).`);
+  }
+  const pr = path && eventName ? (JSON.parse(readFileSync(path, "utf8")) as PullRequestEvent).pull_request : undefined;
   if (!pr) throw new Error("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
   const reviewBots = flag("review-bots");
   if (pr.draft) {

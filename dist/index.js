@@ -61418,7 +61418,10 @@ async function run() {
   const started = Date.now();
   const path = process.env.GITHUB_EVENT_PATH;
   const eventName = process.env.GITHUB_EVENT_NAME;
-  const pr = path && (eventName === "pull_request" || eventName === "pull_request_target") ? JSON.parse(readFileSync(path, "utf8")).pull_request : void 0;
+  if (eventName && eventName !== "pull_request" && eventName !== "pull_request_target") {
+    throw new Error(`Started by ${eventName}; this action reviews pull requests (pull_request or pull_request_target).`);
+  }
+  const pr = path && eventName ? JSON.parse(readFileSync(path, "utf8")).pull_request : void 0;
   if (!pr) throw new Error("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
   const reviewBots = flag("review-bots");
   if (pr.draft) {

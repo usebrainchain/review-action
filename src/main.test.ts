@@ -567,6 +567,18 @@ describe("the job log", () => {
   });
 });
 
+describe("the event", () => {
+  it("is named when it is not a pull request event", async () => {
+    for (const name of ["push", "issue_comment", "workflow_dispatch"]) {
+      vi.stubEnv("GITHUB_EVENT_NAME", name);
+      await expect(go()).rejects.toThrow(`Started by ${name}; this action reviews pull requests (pull_request or pull_request_target).`);
+    }
+    vi.stubEnv("GITHUB_EVENT_NAME", "");
+    await expect(go()).rejects.toThrow("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
+    expect(desk.post).not.toHaveBeenCalled();
+  });
+});
+
 describe("skipping without payment", () => {
   it("skips bot pull requests unless review-bots is true", async () => {
     event({ user: { login: "dependabot[bot]", type: "Bot" } });
