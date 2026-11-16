@@ -105,10 +105,11 @@ export async function post(
   // before settling. Any other answer to a signed payment may have charged it,
   // so the order is followed, never paid for again.
   if (signed && response.status !== 400 && response.status !== 402) return { order: order ?? orderId(signed), price, uncertain: true };
-  const error = typeof reply.error === "string" ? reply.error : undefined;
+  const error = typeof reply.error === "string" ? reply.error.trim() : undefined;
   // A brief within 32,000 characters can still pass 64,000 bytes once encoded: non-ASCII text and escapes grow it.
   if (response.status === 400 && error && /too large to post/i.test(error)) throw new Error("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
-  throw new Error(`${error ?? `BrainChain answered ${response.status}.`} Nothing was charged.`);
+  // The desk's text may end without a full stop, as "Payment verification failed: insufficient_funds" does.
+  throw new Error(`${error ? error.replace(/(?<![.!?])$/, ".") : `BrainChain answered ${response.status}.`} Nothing was charged.`);
 }
 
 /** The price in this preset's token among a desk offer's terms, as both the 402 challenge and GET /x402/tasks list them. */

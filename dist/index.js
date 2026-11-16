@@ -61124,9 +61124,9 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
   const order = typeof reply.order === "string" && /^0x[0-9a-f]{64}$/.test(reply.order) ? reply.order : void 0;
   if (response.ok && order) return { order, price, uncertain: false };
   if (signed && response.status !== 400 && response.status !== 402) return { order: order ?? orderId(signed), price, uncertain: true };
-  const error63 = typeof reply.error === "string" ? reply.error : void 0;
+  const error63 = typeof reply.error === "string" ? reply.error.trim() : void 0;
   if (response.status === 400 && error63 && /too large to post/i.test(error63)) throw new Error("BrainChain refused the brief as too large to post: over 64,000 bytes as JSON. Nothing was charged.");
-  throw new Error(`${error63 ?? `BrainChain answered ${response.status}.`} Nothing was charged.`);
+  throw new Error(`${error63 ? error63.replace(/(?<![.!?])$/, ".") : `BrainChain answered ${response.status}.`} Nothing was charged.`);
 }
 function priceIn(offer, preset2) {
   const accepts = offer?.accepts;

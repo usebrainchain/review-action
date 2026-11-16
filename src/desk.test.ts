@@ -145,6 +145,11 @@ describe("post", () => {
     await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow("brief must be 1 to 32,000 characters. Nothing was charged.");
   });
 
+  it("ends the desk's own text with a full stop before saying nothing was charged", async () => {
+    const { fetchImpl } = desk({}, () => Response.json({ error: "Payment verification failed: insufficient_funds" }, { status: 402 }));
+    await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow(/^Payment verification failed: insufficient_funds\. Nothing was charged\.$/);
+  });
+
   it("names the desk's price when it is above max-price, without x402's own wording", async () => {
     const { fetchImpl, seen } = desk({ amount: "2500000" });
     const error = (await post(base, account, units("1"), brief, kept, fetchImpl).catch((e: unknown) => e)) as Error;
