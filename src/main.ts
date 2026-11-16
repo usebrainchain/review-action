@@ -28,7 +28,7 @@ const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "f
 const MAX_SOURCES = 20;
 
 const minutes = (n: number) => `${n} minute${n === 1 ? "" : "s"}`;
-/** Tries at writing the comment when GitHub fails or does not answer. */
+/** Times a comment write is tried when GitHub fails or does not answer. */
 const ATTEMPTS = 3;
 const transient = (error: unknown) => !(error instanceof GitHubError) || error.status >= 500 || error.status === 429;
 
@@ -75,7 +75,7 @@ async function checkFunds(preset: Preset, owner: `0x${string}`, maxPrice: bigint
 }
 
 export async function run(): Promise<void> {
-  // wait-minutes counts from here, so paying and posting are inside it.
+  // wait-minutes counts from here: the time spent paying is part of it, posting the review is not.
   const started = Date.now();
   const path = process.env.GITHUB_EVENT_PATH;
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -110,7 +110,7 @@ export async function run(): Promise<void> {
   }
   const raw = core.getInput("payer-key").trim();
   if (!raw) {
-    // Pull requests opened by Dependabot read Dependabot secrets, so for a bot an empty key can be expected. For a person it means the secret is missing.
+    // A bot's pull request reads Dependabot secrets, which may not hold the key.
     if (pr.user?.type === "Bot") {
       core.warning("payer-key is empty: no review was paid for. Pull requests opened by Dependabot read Dependabot secrets, so add the key there too to review them.");
       return;
@@ -154,7 +154,7 @@ export async function run(): Promise<void> {
   const earlier = mine?.body ? shownReview(mine.body) : undefined;
   const keep = (text: string, record: { commit: string } | Paid, below = "stays below until the new one is accepted") =>
     statusComment(earlier ? `${text} The review of ${reviewedCommit(earlier)} ${below}.` : text, record, earlier);
-  // The comment is where the order is kept, so a write GitHub fails or does not answer is tried again.
+  // The order lives in the comment: retry a write GitHub fails or does not answer.
   const save = async (body: string): Promise<IssueComment> => {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -197,7 +197,7 @@ export async function run(): Promise<void> {
     posted = { order: recorded.order, price: recorded.price, uncertain: false };
     core.info(`This commit was paid for already, as order ${posted.order}. Waiting on that order; nothing more is paid.`);
   } else if (mine?.body && orderless(mine.body) === head) {
-    // Runs before 1.4.4 named the commit before paying and the order only after, so this one may hide a payment.
+    // Runs before 1.4.4 named the commit before paying and the order only after. This comment may hide a payment.
     throw new Error(
       `The comment on the pull request names ${short} but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
     );
@@ -257,7 +257,7 @@ export async function run(): Promise<void> {
       throw error;
     }
     const price = `${amount(posted.price)} ${preset.token} on ${preset.chain}`;
-    // Paid only once the desk settles it, which it reports while the order is followed.
+    // Not "Paid": the desk settles the payment later and reports it while the order is followed.
     const sent = `${posted.uncertain ? "Signed" : "Sent"} a payment of ${price}`;
     // The job summary keeps the order even if the comment cannot be written again.
     await summarize(
@@ -272,7 +272,7 @@ export async function run(): Promise<void> {
     );
     const order = posted.order;
     mine = await save(reviewing).catch((error: unknown) => {
-      // The desk names the order the same way the comment does, so this is a safeguard: a re-run must find the order it would follow.
+      // The desk's order normally matches the recorded one. When it does not, a re-run cannot find it, and the job fails naming it.
       if (checkpoint !== order) {
         core.setOutput("order", order);
         throw new Error(
@@ -302,7 +302,7 @@ export async function run(): Promise<void> {
     outcome = await check(preset, posted.order).catch((error: unknown): Outcome => ({ kind: "waiting", state: `BrainChain did not answer (${failure(error)}); trying again.` }));
     if (outcome.kind === "waiting" && outcome.state !== last) {
       const task = outcome.taskId ? `Task ${outcome.taskId}` : "The task";
-      // "paid" is also a task status: the model was paid, so the review was accepted.
+      // "paid" is also a task status, meaning the model was paid for an accepted review.
       const step = outcome.taskId && outcome.state === "paid" ? "Jev accepted the review; fetching it." : (progress[outcome.state] ?? outcome.state);
       core.info(outcome.state === "posted" ? `${task} is on BrainChain; Jev is hiring a model.` : outcome.taskId ? `${task}: ${step}` : step);
       last = outcome.state;
@@ -345,7 +345,7 @@ export async function run(): Promise<void> {
       return;
     }
     case "rejected":
-      // A re-run follows the recorded order and only repeats this, so the comment says how to start over.
+      // A re-run follows the recorded order and only repeats this. The comment says how to start over instead.
       if (!superseded) {
         await update(
           keep(

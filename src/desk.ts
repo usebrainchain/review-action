@@ -20,7 +20,7 @@ export interface Posted {
   order: `0x${string}`;
   /** What was signed, in token units. */
   price: bigint;
-  /** The connection dropped after the payment was signed: the order may exist, so it is followed, never paid again. */
+  /** The connection dropped after the payment was signed. The order may exist: follow it, never pay again. */
   uncertain: boolean;
 }
 
@@ -29,8 +29,8 @@ export type Recorder = (signed: Pick<Posted, "order" | "price">) => Promise<void
 
 /**
  * Pays the desk for one task. The signed payment is sent only once `record`
- * has kept its order, so a run that stops at any point after leaves the order
- * behind for the next one. Throws only when nothing was charged.
+ * has kept its order: a run that stops at any point after that leaves the
+ * order for the next run to follow. Throws only when nothing was charged.
  */
 export async function post(
   preset: Preset,
@@ -63,7 +63,7 @@ export async function post(
 
   // The price is read off the 402 challenge: x402 refuses a price above max-price without saying what it was.
   const observed: typeof fetch = async (input, init) => {
-    // The desk names the order after the payment in this header, so it is known before the request leaves.
+    // The order id is the hash of the payment in this header, known before the request leaves.
     const payment = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get("payment-signature");
     if (payment) {
       try {
@@ -73,8 +73,8 @@ export async function post(
         throw error;
       }
     }
-    // Each request gets its own timeout, started once the order is recorded. A signal given to x402 reaches the request
-    // carrying the payment only through clones, whose link to it is lost once they are collected, and record() spent its time.
+    // Each request gets its own timeout, started after the order is recorded. One signal passed to x402 would reach the
+    // paid request only through clones, which drop the link once garbage-collected, and would count the time record() took.
     const reply = await fetchImpl(input, { ...init, signal: AbortSignal.timeout(timeout) });
     if (reply.status === 402) asked = challengePrice(reply, preset);
     return reply;
@@ -91,7 +91,7 @@ export async function post(
     if (unrecorded) throw unrecorded.error;
     if (signed) return { order: orderId(signed), price, uncertain: true };
     const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
-    // x402's own wording names its settings, not this action's inputs, so it goes to the debug log only.
+    // x402's wording refers to its own settings, which a user of this action never sees.
     core.debug(`x402: ${message}`);
     const refused = refusal(message, preset, maxPrice, asked);
     if (refused) throw new Error(`${refused} Nothing was charged.`);

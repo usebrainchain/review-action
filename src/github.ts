@@ -82,8 +82,8 @@ export interface IssueComment {
 /**
  * The newest comment starting with the marker that this action's identity left:
  * `login` for a person's token, otherwise any bot, since an App's own login
- * cannot be read with its token. The comment records what was paid for, so no
- * one else may write it.
+ * cannot be read with its token. The comment records what was paid for, so
+ * comments by anyone else are ignored.
  */
 export async function ownComment(token: string, repo: string, number: number, login: string | undefined, marker: string): Promise<IssueComment | undefined> {
   let newest: IssueComment | undefined;
