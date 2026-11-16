@@ -33,7 +33,7 @@ inputs:
 
 outputs:
   order:
-    description: The BrainChain order id, set once the payment is sent, when a re-run waits on a paid order, or when the commit already has a review. Also set when the job stops waiting. Empty when the payment does not settle.
+    description: The BrainChain order id, set once the payment is sent, when a re-run waits on a paid order, when the commit already has a review, or when the job stops waiting. Empty when the payment does not settle.
   task-id:
     description: The task's id on BrainChain, set once the task is posted, including when the job stops waiting after that.
   accepted:
