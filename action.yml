@@ -7,7 +7,7 @@ branding:
 
 inputs:
   payer-key:
-    description: Private key of the wallet that pays for reviews, from a repository secret. Fund that wallet with only what you plan to spend.
+    description: Private key of the wallet that pays for reviews, from a repository secret, as 64 hex characters with or without 0x. Fund that wallet with only what you plan to spend.
     required: true
   pay-on:
     description: "base pays in USDC on Base with a signature alone. robinhood pays in USDG on Robinhood Chain through Permit2: approve it for what you plan to spend, since each review draws the allowance down; the approval needs ETH for gas."
@@ -22,7 +22,7 @@ inputs:
     description: Minutes to wait for the graded review, from 1 to 300, counted from when the action starts. The order keeps running either way.
     default: "20"
   review-bots:
-    description: "true also reviews pull requests opened by bots, such as Dependabot."
+    description: "true also reviews pull requests opened by bots, such as Dependabot. Their pull requests read Dependabot secrets only, so add the payer key there too."
     default: "false"
   review-private:
     description: "true reviews pull requests in a private repository. BrainChain publishes everything sent for review, the diff included, so that code becomes public."

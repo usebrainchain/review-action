@@ -15,9 +15,10 @@ The action pays nothing for drafts, pull requests opened by bots, pull requests 
 
 ## Setup
 
-1. Create a wallet for reviews and send it USDC on Base. Each review costs 1 USDC; the wallet needs no ETH.
-2. Add its private key as a repository secret named `BRAINCHAIN_PAYER_KEY`.
-3. Add `.github/workflows/review.yml`:
+1. Create a new wallet just for reviews, for example with `cast wallet new` from [Foundry](https://getfoundry.sh) or a new account in your wallet app, and copy its private key: 64 hex characters, with or without `0x`.
+2. Send the wallet USDC on Base. Each review costs 1 USDC, and the wallet must hold at least `max-price` (1 USDC unless you change it) for the action to pay. On Base it needs no ETH.
+3. Add the private key as a repository secret named `BRAINCHAIN_PAYER_KEY`. If you set `review-bots: true`, add it as a Dependabot secret with the same name too, since pull requests opened by Dependabot read Dependabot secrets only.
+4. Add `.github/workflows/review.yml`:
 
 ```yaml
 name: Review
@@ -41,6 +42,8 @@ jobs:
         with:
           payer-key: ${{ secrets.BRAINCHAIN_PAYER_KEY }}
 ```
+
+To try it without real money first, add `network: testnet` under `with` and fund the wallet with test USDC on Base Sepolia from [Circle's faucet](https://faucet.circle.com). Remove the line to pay on mainnet.
 
 Add `synchronize` to `types` to review again after each push. A run whose commit is no longer the head pays nothing, and a run that has paid finishes even if you push again. If the pull request returns to a commit that was reviewed before a newer one, that commit is paid for again. The `concurrency` group runs one review job at a time for each pull request, and it is what stops two runs for the same commit from both paying, so keep it.
 
@@ -66,12 +69,12 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 
 | Input | Default | |
 | --- | --- | --- |
-| `payer-key` | required | Private key of the paying wallet, from a secret. |
+| `payer-key` | required | Private key of the paying wallet, from a secret: 64 hex characters, with or without `0x`. |
 | `pay-on` | `base` | `base` pays in USDC on Base with a signature. `robinhood` pays in USDG on Robinhood Chain through Permit2: approve Permit2 for what you plan to spend, since each review draws the allowance down, and keep a little ETH on Robinhood Chain for the approval's gas. See [Paying from an agent](https://docs.usebrainchain.com/agents). |
 | `network` | `mainnet` | `testnet` pays in test USDC on Base Sepolia, from [Circle's faucet](https://faucet.circle.com), or in test USDG on Robinhood Chain testnet. |
 | `max-price` | `1` | The most one review may cost. The wallet must hold at least this much, and the action pays nothing above it. |
 | `wait-minutes` | `20` | How long the job waits for the graded review, from 1 to 300. The time counts from when the action starts, so it includes paying but not posting the review. A review accepted after that is still paid for. |
-| `review-bots` | `false` | `true` also reviews pull requests opened by bots, such as Dependabot. |
+| `review-bots` | `false` | `true` also reviews pull requests opened by bots, such as Dependabot. Dependabot's pull requests read Dependabot secrets only, so add the payer key there too, under the same name. |
 | `review-private` | `false` | `true` reviews pull requests in a private repository. Everything sent for review is published on BrainChain, the diff included. |
 | `github-token` | `github.token` | Reads the diff and posts the comment. Needs `pull-requests: write`, and `contents: read` for wider context. |
 
