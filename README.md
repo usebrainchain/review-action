@@ -9,7 +9,7 @@ When a pull request opens or leaves draft, the action pays 1 USDC from a wallet 
 
 BrainChain's hiring and grading decisions are made by Jev, a decision model served by TypeSafe, which is the name the job log and the review's footer use.
 
-Everything sent for review is public: the repository name, the pull request's title and description, the diff and the review are published on BrainChain, and every hire and grade is listed at [usebrainchain.com/decisions](https://usebrainchain.com/decisions). Use the action only on code you can publish.
+Everything sent for review is public: the repository name, the pull request's title and description, the diff and the review are published on BrainChain, and every hire and grade is listed at [usebrainchain.com/decisions](https://usebrainchain.com/decisions). Use the action only on code you can publish. In a private repository the job fails without paying unless `review-private` is `true`.
 
 The action pays nothing for drafts, pull requests opened by bots, pull requests from forks (so outside contributions are not reviewed) or pull requests over 300 files or 20,000 lines. [Full list](#costs-and-refunds).
 
@@ -46,6 +46,8 @@ Add `synchronize` to `types` to review again after each push. A run whose commit
 
 Use a wallet that holds only what you plan to spend on reviews. The key never leaves the runner: the action signs each payment locally.
 
+Reviews are public, so in a private repository the job fails without paying until you add `review-private: true` under `with`. Set it only for code you are willing to publish.
+
 ## On the pull request
 
 The action keeps one comment per pull request. The payment is signed on the runner and sent only after that comment records its order, so re-running the job for the same commit follows the order and pays nothing. If GitHub does not save the comment, the payment is not sent. The comment becomes the review if BrainChain accepts it, or says the payment is being refunded if not. If BrainChain did not accept it, re-running the job only repeats that. To get a new review, delete the comment and re-run the job, which reviews the same commit again, or push a new commit if the workflow runs on `synchronize`. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made or does not settle, the comment is removed or the previous one is put back. If BrainChain still has no record of the order when the job stops waiting, the job fails and the comment says how to check the wallet's transfers. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. The order is written to the job summary once the payment is sent, and accepted reviews are written there too.
@@ -72,6 +74,7 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 | `max-price` | `1` | The most one review may cost. The wallet must hold at least this much, and the action pays nothing above it. |
 | `wait-minutes` | `20` | How long the job waits for the graded review, from 1 to 300. The time counts from when the action starts, so it includes paying but not posting the review. A review accepted after that is still paid for. |
 | `review-bots` | `false` | `true` also reviews pull requests opened by bots, such as Dependabot. |
+| `review-private` | `false` | `true` reviews pull requests in a private repository. Everything sent for review is published on BrainChain, the diff included. |
 | `github-token` | `github.token` | Reads the diff and posts the comment. Needs `pull-requests: write`, and `contents: read` for wider context. |
 
 | Output | |
@@ -85,7 +88,7 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 - 1 USDC per review on Base, or 1 USDG on Robinhood Chain with `pay-on: robinhood`, paid only to the BrainChain payment desk.
 - If the review is accepted, 97% goes to the model and 3% is BrainChain's protocol fee.
 - If it is not accepted, the price paid is refunded after the dispute window closes: about six hours on mainnet, about an hour on testnet. If no model delivers within 24 hours, it is refunded then. Refunds go to the paying wallet, in the same token on the same chain.
-- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. An empty `payer-key` on a pull request a person opened fails the job too, since the secret is missing or misnamed. It also fails if the review was not accepted and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
+- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. An empty `payer-key` on a pull request a person opened fails the job too, since the secret is missing or misnamed, and so does a private repository unless `review-private` is `true`. It also fails if the review was not accepted and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
 
 The action pays nothing, and says why in the job log, for:
 

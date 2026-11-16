@@ -24,6 +24,9 @@ inputs:
   review-bots:
     description: "true also reviews pull requests opened by bots, such as Dependabot."
     default: "false"
+  review-private:
+    description: "true reviews pull requests in a private repository. BrainChain publishes everything sent for review, the diff included, so that code becomes public."
+    default: "false"
   github-token:
     description: "Token that reads the diff and posts the review. Needs pull-requests: write, and contents: read for wider context."
     default: ${{ github.token }}

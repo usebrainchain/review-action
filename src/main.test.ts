@@ -157,10 +157,10 @@ function stubGitHub() {
   });
 }
 
-function event(pr: Record<string, unknown> = {}) {
+function event(pr: Record<string, unknown> = {}, repository?: { private: boolean }) {
   const path = join(mkdtempSync(join(tmpdir(), "review-action-")), "event.json");
   const base = { number: 3, title: "Fix the retry loop", body: null, user: { login: "dev", type: "User" }, head: { sha: SHA, repo: { full_name: "acme/api" } }, base: { repo: { full_name: "acme/api" } } };
-  writeFileSync(path, JSON.stringify({ pull_request: { ...base, ...pr } }));
+  writeFileSync(path, JSON.stringify({ pull_request: { ...base, ...pr }, ...(repository ? { repository } : {}) }));
   vi.stubEnv("GITHUB_EVENT_PATH", path);
   vi.stubEnv("GITHUB_EVENT_NAME", "pull_request");
 }
@@ -603,6 +603,28 @@ describe("the event", () => {
     vi.stubEnv("GITHUB_EVENT_NAME", "");
     await expect(go()).rejects.toThrow("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
     expect(desk.post).not.toHaveBeenCalled();
+  });
+});
+
+describe("a private repository", () => {
+  it("is refused, since reviews are public, unless review-private is true", async () => {
+    event({}, { private: true });
+    await expect(go()).rejects.toThrow(
+      "This repository is private, and BrainChain reviews are public: the pull request's title, description and diff would be published on BrainChain. Set review-private to true to send them anyway. No review was paid for.",
+    );
+    expect(state.log).toEqual([]);
+    expect(desk.post).not.toHaveBeenCalled();
+    state.inputs["review-private"] = "yes";
+    await expect(go()).rejects.toThrow('review-private must be true or false, not "yes".');
+    state.inputs["review-private"] = "true";
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not refused when public", async () => {
+    event({}, { private: false });
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
   });
 });
 

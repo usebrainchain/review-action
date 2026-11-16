@@ -20,6 +20,7 @@ interface PullRequestEvent {
     head: { sha: string; repo: { full_name: string } | null };
     base: { repo: { full_name: string } };
   };
+  repository?: { private?: boolean };
 }
 
 const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address, address) view returns (uint256)"]);
@@ -81,9 +82,11 @@ export async function run(): Promise<void> {
   if (eventName && eventName !== "pull_request" && eventName !== "pull_request_target") {
     throw new Error(`Started by ${eventName}; this action reviews pull requests (pull_request or pull_request_target).`);
   }
-  const pr = path && eventName ? (JSON.parse(readFileSync(path, "utf8")) as PullRequestEvent).pull_request : undefined;
+  const event = path && eventName ? (JSON.parse(readFileSync(path, "utf8")) as PullRequestEvent) : undefined;
+  const pr = event?.pull_request;
   if (!pr) throw new Error("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
   const reviewBots = flag("review-bots");
+  const reviewPrivate = flag("review-private");
   if (pr.draft) {
     core.notice("Draft pull request: no review was paid for.");
     return;
@@ -98,6 +101,12 @@ export async function run(): Promise<void> {
   if (pr.head.repo?.full_name !== repo) {
     core.notice("Pull request from a fork: no review was paid for.");
     return;
+  }
+  // BrainChain publishes every task with its brief, which holds the diff.
+  if (event.repository?.private && !reviewPrivate) {
+    throw new Error(
+      "This repository is private, and BrainChain reviews are public: the pull request's title, description and diff would be published on BrainChain. Set review-private to true to send them anyway. No review was paid for.",
+    );
   }
   const raw = core.getInput("payer-key").trim();
   if (!raw) {
