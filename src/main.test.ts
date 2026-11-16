@@ -35,11 +35,15 @@ vi.mock("@actions/core", () => ({
     throw new Error(message);
   },
   summary: {
+    pending: [] as string[],
     addRaw(body: string) {
-      state.summary.push(body);
+      this.pending.push(body);
       return this;
     },
-    write: async () => undefined,
+    async write(options?: { overwrite?: boolean }) {
+      state.summary = options?.overwrite ? this.pending : [...state.summary, ...this.pending];
+      this.pending = [];
+    },
   },
 }));
 vi.mock("./desk.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("./desk.js")>()), post: desk.post, check: desk.check, quote: desk.quote }));
@@ -209,8 +213,8 @@ describe("paying once per commit", () => {
       "read balanceOf",
       "post BrainChain is reviewing aaaaaaa.",
       "pay",
-      `output order=${ORDER}`,
       `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
+      `output order=${ORDER}`,
       "output task-id=4",
       "edit ### BrainChain review",
       "output accepted=true",
@@ -259,10 +263,11 @@ describe("paying once per commit", () => {
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
   });
 
-  it("writes the order to the job summary as soon as the desk takes the payment", async () => {
+  it("writes the order to the job summary as soon as the desk takes the payment, and says it was sent until the desk settles it", async () => {
     desk.check.mockResolvedValue({ kind: "waiting", state: "hired" });
     await go();
-    expect(state.summary).toEqual([`Paid 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`]);
+    expect(state.summary).toEqual([`Sent a payment of 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`]);
+    expect(state.infos[0]).toBe(`Sent a payment of 1 test USDC on Base Sepolia. Order ${ORDER}.`);
   });
 
   it("tries the comment that records the order again when GitHub fails, and pays once it is saved", async () => {
@@ -334,7 +339,7 @@ describe("paying once per commit", () => {
       gh.patchStatus = 503;
       return { order: other, price: 1_000_000n, uncertain: false };
     });
-    await expect(go()).rejects.toThrow(`Paid 1 test USDC on Base Sepolia as order ${other}, but the comment on the pull request could not record it`);
+    await expect(go()).rejects.toThrow(`Sent a payment of 1 test USDC on Base Sepolia as order ${other}, but the comment on the pull request could not record it`);
     expect(state.outputs.order).toBe(other);
     expect(state.summary[0]).toContain(other);
     expect(desk.check).not.toHaveBeenCalled();
@@ -435,22 +440,43 @@ describe("paying once per commit", () => {
     expect(gh.comments).toEqual([]);
   });
 
-  it("fails when BrainChain confirmed the order but still has no record of it when the job stops waiting", async () => {
+  it("says the payment was sent, not paid, until it settles, and leaves order unset when it does not", async () => {
+    desk.check.mockResolvedValue({ kind: "failed", reason: "The payment did not settle. Nothing was charged." });
+    await expect(go()).rejects.toThrow("The payment did not settle. Nothing was charged.");
+    expect(state.infos).toEqual([`Sent a payment of 1 test USDC on Base Sepolia. Order ${ORDER}.`]);
+    expect(state.summary).toEqual(["The payment of 1 test USDC on Base Sepolia for the review of aaaaaaa did not settle, so nothing was charged."]);
+    expect(state.outputs.order).toBeUndefined();
+  });
+
+  const check = (where: string) =>
+    `Look up 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 in a Base Sepolia block explorer. If its test USDC transfers show the payment, write to hello@usebrainchain.com with the order id. If they show none ten minutes after the payment was signed, nothing was charged: delete ${where} and re-run the job.`;
+
+  it("fails, and says so in the comment, when BrainChain confirmed the order but still has no record of it when the job stops waiting", async () => {
     desk.check.mockResolvedValue({ kind: "waiting", state: "unknown" });
-    await expect(go()).rejects.toThrow(`BrainChain has no record of order ${ORDER}. If `);
-    expect(state.summary[0]).toBe(`Paid 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`);
+    await expect(go()).rejects.toThrow(`The payment was signed as order ${ORDER} and BrainChain has no record of it. ${check("the comment on the pull request")}`);
+    expect(state.summary[0]).toBe(`Sent a payment of 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`);
+    expect(visible(gh.comments[0]!.body)).toBe(`The payment for the review of aaaaaaa was signed as order \`${ORDER}\` and BrainChain has no record of it. ${check("this comment")}`);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
   });
 
-  it("warns instead, and says so in the job summary, when the confirmation was lost", async () => {
+  it("fails as a re-run would when the confirmation was lost and BrainChain has no record of the order, and says what happened", async () => {
     desk.post.mockImplementation(async (_preset: unknown, _account: unknown, _maxPrice: unknown, _brief: unknown, record: Recorder) => {
       await record({ order: ORDER, price: 1_000_000n });
       return { order: ORDER, price: 1_000_000n, uncertain: true };
     });
     desk.check.mockResolvedValue({ kind: "waiting", state: "unknown" });
-    await go();
+    await expect(go()).rejects.toThrow(`The payment was signed as order ${ORDER}, but its confirmation was lost, and BrainChain has no record of it. ${check("the comment on the pull request")}`);
+    expect(state.infos[0]).toBe(`Signed a payment of 1 test USDC on Base Sepolia. Order ${ORDER} (the confirmation was lost; waiting on that order).`);
+    expect(state.infos.join("\n")).not.toMatch(/^Paid/m);
     expect(state.summary).toEqual([`Signed a payment of 1 test USDC on Base Sepolia for the review of aaaaaaa, but BrainChain's confirmation was lost: order \`${ORDER}\`.`]);
-    expect(state.warnings.at(-1)).toMatch(new RegExp(`^BrainChain has no record of order ${ORDER}\\. .*delete the comment on the pull request and re-run the job\\.$`));
+    expect(visible(gh.comments[0]!.body)).toBe(
+      `The payment for the review of aaaaaaa was signed as order \`${ORDER}\`, but its confirmation was lost, and BrainChain has no record of it. ${check("this comment")}`,
+    );
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+    expect(state.outputs.order).toBe(ORDER);
+
+    await expect(go()).rejects.toThrow(`The payment was signed as order ${ORDER} and BrainChain has no record of it.`);
+    expect(desk.post).toHaveBeenCalledTimes(1);
   });
 
   it("leaves accepted empty, and says a re-run posts the review, when the job stops waiting", async () => {
@@ -516,6 +542,7 @@ describe("the earlier review", () => {
     await expect(go()).rejects.toThrow("The payment did not settle.");
     expect(desk.post).not.toHaveBeenCalled();
     expect(gh.comments[0]!.body).toBe(earlier);
+    expect(state.outputs.order).toBeUndefined();
   });
 });
 

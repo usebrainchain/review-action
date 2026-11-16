@@ -61490,7 +61490,7 @@ async function run() {
   const update = (body) => save(body).catch((error63) => {
     warning(`Could not update the comment on the pull request: ${failure2(error63)}`);
   });
-  const summarize = (text) => summary.addRaw(text, true).write().then(() => true).catch((error63) => {
+  const summarize = (text, overwrite = false) => summary.addRaw(text, true).write({ overwrite }).then(() => true).catch((error63) => {
     warning(`Could not write the job summary: ${failure2(error63)}`);
     return false;
   });
@@ -61505,7 +61505,6 @@ async function run() {
   const recorded = mine?.body ? paidFor(mine.body) : void 0;
   if (recorded?.commit === head) {
     posted = { order: recorded.order, price: recorded.price, uncertain: false };
-    setOutput("order", posted.order);
     info(`This commit was paid for already, as order ${posted.order}. Waiting on that order; nothing more is paid.`);
   } else if (mine?.body && orderless(mine.body) === head) {
     throw new Error(
@@ -61557,13 +61556,12 @@ async function run() {
       await undo();
       throw error63;
     }
-    setOutput("order", posted.order);
     const price = `${amount(posted.price)} ${preset2.token} on ${preset2.chain}`;
-    const spent = `Paid ${price}`;
+    const sent = `${posted.uncertain ? "Signed" : "Sent"} a payment of ${price}`;
     await summarize(
-      posted.uncertain ? `Signed a payment of ${price} for the review of ${short}, but BrainChain's confirmation was lost: order \`${posted.order}\`.` : `${spent} for the review of ${short}: order \`${posted.order}\`.`
+      posted.uncertain ? `${sent} for the review of ${short}, but BrainChain's confirmation was lost: order \`${posted.order}\`.` : `${sent} for the review of ${short}: order \`${posted.order}\`.`
     );
-    info(`${spent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
+    info(`${sent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
       `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
       { order: posted.order, commit: head, price: posted.price }
@@ -61571,8 +61569,9 @@ async function run() {
     const order = posted.order;
     mine = await save(reviewing).catch((error63) => {
       if (checkpoint !== order) {
+        setOutput("order", order);
         throw new Error(
-          `${spent} as order ${order}, but the comment on the pull request could not record it: ${failure2(error63)}. The order keeps running at ${preset2.desk}/x402/tasks/${order}; write to hello@usebrainchain.com with the order id if its review does not arrive.`
+          `${sent} as order ${order}, but the comment on the pull request could not record it: ${failure2(error63)}. The order keeps running at ${preset2.desk}/x402/tasks/${order}; write to hello@usebrainchain.com with the order id if its review does not arrive.`
         );
       }
       warning(`Could not update the comment on the pull request: ${failure2(error63)}. It records order ${order} already, so a re-run follows that order and pays nothing more.`);
@@ -61602,6 +61601,7 @@ async function run() {
       last = outcome.state;
     }
   }
+  if (outcome.kind !== "failed") setOutput("order", posted.order);
   if ("taskId" in outcome && outcome.taskId) setOutput("task-id", outcome.taskId);
   const paid = { order: posted.order, commit: head, price: posted.price };
   const latest = await ownComment(token, repo, pr.number, login, MARKER).catch((error63) => {
@@ -61649,14 +61649,15 @@ async function run() {
       setOutput("accepted", "false");
       throw new Error(`Jev did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
     case "failed":
+      await summarize(`The payment of ${amount(posted.price)} ${preset2.token} on ${preset2.chain} for the review of ${short} did not settle, so nothing was charged.`, true);
       if (!superseded) await undo();
       throw new Error(outcome.reason);
     case "waiting":
       if (outcome.state === "unknown") {
-        const missing = `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`;
-        if (!posted.uncertain) throw new Error(missing);
-        warning(missing);
-        return;
+        const lost = posted.uncertain ? ", but its confirmation was lost," : "";
+        const check3 = (where) => `Look up ${account.address} in a ${preset2.chain} block explorer. If its ${preset2.token} transfers show the payment, write to hello@usebrainchain.com with the order id. If they show none ten minutes after the payment was signed, nothing was charged: delete ${where} and re-run the job.`;
+        if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${check3("this comment")}`, paid));
+        throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${check3("the comment on the pull request")}`);
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));
       warning(
