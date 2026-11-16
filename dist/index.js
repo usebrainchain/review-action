@@ -61183,7 +61183,9 @@ async function check2(preset2, order, fetchImpl = fetch) {
   if (response.status === 404) return { kind: "waiting", state: "unknown" };
   if (!response.ok) return { kind: "waiting", state: `http ${response.status}` };
   const view = await response.json();
-  const taskId = view.taskId;
+  const id = String(view.taskId ?? "");
+  const taskId = /^\d+$/.test(id) ? id : void 0;
+  const word = (value) => typeof value === "string" && /^[a-z][a-z-]{0,39}$/.test(value) ? value : void 0;
   if (view.state === "failed") return { kind: "failed", reason: "The payment did not settle. Nothing was charged." };
   if (view.state === "refund-failed") return { kind: "refund-failed", ...taskId ? { taskId } : {} };
   if (view.state === "refunding" || view.state === "refunded" || view.task?.accepted === false) return { kind: "rejected", ...taskId ? { taskId } : {} };
@@ -61191,7 +61193,7 @@ async function check2(preset2, order, fetchImpl = fetch) {
     const text = await fetchImpl(view.result, { signal: AbortSignal.timeout(2e4) });
     if (text.ok) return { kind: "accepted", ...taskId ? { taskId } : {}, review: await text.text() };
   }
-  return { kind: "waiting", ...taskId ? { taskId } : {}, state: view.task?.status ?? view.state ?? "unknown" };
+  return { kind: "waiting", ...taskId ? { taskId } : {}, state: word(view.task?.status) ?? word(view.state) ?? "unknown" };
 }
 
 // src/github.ts
@@ -61508,7 +61510,7 @@ async function run() {
       const texts = await Promise.all(brief.files.map((file2) => fileAt(token, repo, file2, head)));
       brief = buildBrief(about, text, new Map(brief.files.flatMap((file2, i) => texts[i] === void 0 ? [] : [[file2, texts[i]]])));
     }
-    if (brief.skipped.length) info(`Left out of the brief: ${brief.skipped.join(", ")}`);
+    if (brief.skipped.length) info(`Left out of the brief: ${brief.skipped.map(printable).join(", ")}`);
     if (brief.truncated) warning("The diff is longer than a BrainChain brief allows, so the review covers its first part only.");
     const asked = await quote(preset2);
     if (asked !== void 0 && asked > maxPrice) throw new Error(`${overPrice(preset2, asked, maxPrice)} Nothing was charged.`);

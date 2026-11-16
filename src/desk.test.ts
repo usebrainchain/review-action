@@ -230,6 +230,13 @@ describe("check", () => {
   it("keeps waiting while the task runs", async () => {
     expect(await check(base, order, reply({ state: "posted", taskId: "4", task: { status: "hired" } }))).toEqual({ kind: "waiting", taskId: "4", state: "hired" });
   });
+
+  it("drops a task id or state that could start a workflow command in the job log", async () => {
+    expect(await check(base, order, reply({ state: "posted", taskId: "4\n::warning::injected", task: { status: "hired\n::stop-commands::x" } }))).toEqual({ kind: "waiting", state: "posted" });
+    expect(await check(base, order, reply({ state: "::error::x", taskId: 12 }))).toEqual({ kind: "waiting", taskId: "12", state: "unknown" });
+    const view = { state: "posted", taskId: "](https://evil.example)", task: { status: "graded", accepted: true }, result: `${base.desk}/records/0x1.txt` };
+    expect(await check(base, order, reply(view))).toEqual({ kind: "accepted", review: "Looks correct: the loop now stops after three tries." });
+  });
 });
 
 describe("presets and amounts", () => {

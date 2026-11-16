@@ -61,7 +61,7 @@ function unquote(path: string): string {
 }
 
 /** A path as the brief shows it. Git allows a line break in a file name, and one would end the diff block and put the author's text after it. */
-const printable = (path: string) => path.replace(/[\u0000-\u001f\u007f]/g, "?");
+export const printable = (path: string) => path.replace(/[\u0000-\u001f\u007f]/g, "?");
 
 /** A rename, a mode change or a binary file has no hunk to review. */
 const changed = (file: FileDiff) => file.text.split(/^(?=@@ )/m).slice(1).some((hunk) => /\n[+-]/.test(hunk));

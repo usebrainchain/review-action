@@ -178,7 +178,7 @@ export type Outcome =
 
 interface OrderView {
   state?: string;
-  taskId?: string;
+  taskId?: unknown;
   task?: { status?: string; accepted?: boolean };
   result?: string;
 }
@@ -188,7 +188,11 @@ export async function check(preset: Preset, order: string, fetchImpl: typeof fet
   if (response.status === 404) return { kind: "waiting", state: "unknown" };
   if (!response.ok) return { kind: "waiting", state: `http ${response.status}` };
   const view = (await response.json()) as OrderView;
-  const taskId = view.taskId;
+  // Both reach the job log, where a line starting with :: is a workflow command, and the task id reaches the comment too:
+  // anything but a number or a plain word is dropped.
+  const id = String(view.taskId ?? "");
+  const taskId = /^\d+$/.test(id) ? id : undefined;
+  const word = (value: unknown) => (typeof value === "string" && /^[a-z][a-z-]{0,39}$/.test(value) ? value : undefined);
   if (view.state === "failed") return { kind: "failed", reason: "The payment did not settle. Nothing was charged." };
   if (view.state === "refund-failed") return { kind: "refund-failed", ...(taskId ? { taskId } : {}) };
   if (view.state === "refunding" || view.state === "refunded" || view.task?.accepted === false) return { kind: "rejected", ...(taskId ? { taskId } : {}) };
@@ -197,5 +201,5 @@ export async function check(preset: Preset, order: string, fetchImpl: typeof fet
     const text = await fetchImpl(view.result, { signal: AbortSignal.timeout(20_000) });
     if (text.ok) return { kind: "accepted", ...(taskId ? { taskId } : {}), review: await text.text() };
   }
-  return { kind: "waiting", ...(taskId ? { taskId } : {}), state: view.task?.status ?? view.state ?? "unknown" };
+  return { kind: "waiting", ...(taskId ? { taskId } : {}), state: word(view.task?.status) ?? word(view.state) ?? "unknown" };
 }

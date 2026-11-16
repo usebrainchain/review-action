@@ -4,7 +4,7 @@ import * as core from "@actions/core";
 import { createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { buildBrief } from "./brief.js";
+import { buildBrief, printable } from "./brief.js";
 import { check, overPrice, post, quote, type Outcome, type Posted } from "./desk.js";
 import { comment, commenter, diff, fileAt, GitHubError, ownComment, pullRequest, remove, type IssueComment } from "./github.js";
 import { amount, PERMIT2, preset as presetFor, units, type Preset } from "./presets.js";
@@ -200,7 +200,8 @@ export async function run(): Promise<void> {
       const texts = await Promise.all(brief.files.map((file) => fileAt(token, repo, file, head)));
       brief = buildBrief(about, text, new Map(brief.files.flatMap((file, i) => (texts[i] === undefined ? [] : [[file, texts[i]!] as [string, string]]))));
     }
-    if (brief.skipped.length) core.info(`Left out of the brief: ${brief.skipped.join(", ")}`);
+    // core.info writes text as it is, and a line break in a path would start a line the runner reads as a workflow command.
+    if (brief.skipped.length) core.info(`Left out of the brief: ${brief.skipped.map(printable).join(", ")}`);
     if (brief.truncated) core.warning("The diff is longer than a BrainChain brief allows, so the review covers its first part only.");
 
     // Refused before the status comment, so a wrong max-price does not notify the pull request's subscribers.

@@ -556,6 +556,16 @@ describe("the brief", () => {
   });
 });
 
+describe("the job log", () => {
+  it("prints a skipped path with a line break on one line, so it cannot start a workflow command", async () => {
+    const path = String.raw`dist/x\n::warning::injected.js`;
+    gh.diff = `diff --git "a/${path}" "b/${path}"\nindex 1..2 100644\n--- "a/${path}"\n+++ "b/${path}"\n@@ -1 +1 @@\n-a\n+b\n${DIFF}`;
+    await go();
+    expect(state.infos).toContain("Left out of the brief: dist/x?::warning::injected.js");
+    expect(state.infos.flatMap((line) => line.split("\n")).filter((line) => line.startsWith("::"))).toEqual([]);
+  });
+});
+
 describe("skipping without payment", () => {
   it("skips bot pull requests unless review-bots is true", async () => {
     event({ user: { login: "dependabot[bot]", type: "Bot" } });
