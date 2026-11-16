@@ -38914,7 +38914,7 @@ function privateKeyToAccount(privateKey, options = {}) {
 }
 
 // src/brief.ts
-var LIMITS = { title: 120, brief: 32e3, level: 200 };
+var LIMITS = { title: 120, brief: 32e3 };
 var MAX_BYTES = 63e3;
 var LEVELS = [
   "Names real defects in the diff with file, line and a concrete fix, or correctly finds none, and invents nothing",

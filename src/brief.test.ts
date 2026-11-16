@@ -14,7 +14,7 @@ describe("buildBrief", () => {
     expect(brief.title.length).toBeLessThanOrEqual(LIMITS.title);
     expect(brief.brief.length).toBeLessThanOrEqual(LIMITS.brief);
     expect(brief.levels).toHaveLength(3);
-    for (const level of brief.levels) expect(level.length).toBeLessThanOrEqual(LIMITS.level);
+    for (const level of brief.levels) expect(level.length).toBeLessThanOrEqual(200);
   });
 
   it("includes the title, the description without template comments, and the diff", () => {

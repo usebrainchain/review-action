@@ -3,7 +3,7 @@
 // if it reaches the second level. It refuses a task over 64,000 bytes as JSON,
 // which a brief of non-ASCII text passes well within 32,000 characters.
 
-export const LIMITS = { title: 120, brief: 32_000, level: 200 } as const;
+export const LIMITS = { title: 120, brief: 32_000 } as const;
 /** Bytes the task may take as JSON, under the desk's 64,000 for what it adds. */
 export const MAX_BYTES = 63_000;
 
