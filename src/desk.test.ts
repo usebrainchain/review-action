@@ -283,6 +283,23 @@ describe("neutralize", () => {
     expect(long.length).toBeLessThan(61_000);
     expect(long).toMatch(/was cut here\.\]$/);
   });
+
+  it("cuts the review where its escaped text fits, since escaping lengthens it", () => {
+    for (const review of ["<!--".repeat(15_000), "@a ".repeat(20_000), "#\n".repeat(30_000)]) {
+      expect(review.length).toBeLessThanOrEqual(60_000);
+      const text = neutralize(review);
+      expect(text.length).toBeLessThan(61_000);
+      expect(text).toMatch(/\n\n\[The review is longer than a comment allows and was cut here\.\]$/);
+    }
+    const comment = reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", review: "<!--".repeat(15_000) });
+    expect(comment.length).toBeLessThanOrEqual(65_536);
+  });
+
+  it("escapes a code span the cut leaves open", () => {
+    const text = neutralize(`${"a".repeat(59_990)} \`<!-- x <!-- y\` ${"b".repeat(100)}`);
+    expect(text).toMatch(/ `&lt;!--/);
+    expect(text).not.toMatch(/(^|[^;])<!--/);
+  });
 });
 
 describe("neutralize links and headings", () => {

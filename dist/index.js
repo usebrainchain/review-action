@@ -61288,8 +61288,21 @@ var NOT_PARAGRAPH = /^\s*$|^ {0,3}([-*+][ \t]|\d+[.)][ \t]|[>#|<])/;
 var escapeProse = (text) => text.replace(/<!--/g, "&lt;!--").replace(/<(\/?)(details|summary)\b/gi, "&lt;$1$2").replace(/(^|\W)@(?=[A-Za-z0-9])/g, "$1@\u200B").replace(/(^|[^\w&/])#(?=\d)/g, "$1#\u200B");
 var escapeLine = (line) => line.replace(/(`+)(?!`).*?(?<!`)\1(?!`)|[^`]+|`+/g, (part, span) => span ? part : escapeProse(part));
 function neutralize(review) {
-  const long = review.length > MAX_REVIEW;
-  const lines = (long ? review.slice(0, MAX_REVIEW) : review).split("\n");
+  const whole2 = escapeReview(review);
+  if (whole2.length <= MAX_REVIEW) return whole2;
+  let lo = 0;
+  let hi = review.length;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (escapeReview(review.slice(0, mid)).length <= MAX_REVIEW) lo = mid;
+    else hi = mid;
+  }
+  return `${escapeReview(review.slice(0, lo))}
+
+[The review is longer than a comment allows and was cut here.]`;
+}
+function escapeReview(review) {
+  const lines = review.split("\n");
   let fence;
   let paragraph = false;
   for (let i = 0; i < lines.length; i++) {
@@ -61314,7 +61327,6 @@ function neutralize(review) {
     paragraph = !NOT_PARAGRAPH.test(line);
   }
   if (fence) lines.push(fence);
-  if (long) lines.push("", "[The review is longer than a comment allows and was cut here.]");
   return lines.join("\n");
 }
 var RECORD = /^<!-- brainchain commit=([0-9a-f]{7,64})(?: order=(0x[0-9a-f]{64}) price=(\d+))? -->$/;

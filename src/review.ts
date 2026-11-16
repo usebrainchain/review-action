@@ -31,8 +31,22 @@ const escapeLine = (line: string) => line.replace(/(`+)(?!`).*?(?<!`)\1(?!`)|[^`
  * it as text.
  */
 export function neutralize(review: string): string {
-  const long = review.length > MAX_REVIEW;
-  const lines = (long ? review.slice(0, MAX_REVIEW) : review).split("\n");
+  const whole = escapeReview(review);
+  if (whole.length <= MAX_REVIEW) return whole;
+  // Escaping lengthens the text, so the cut is made where the escaped review fits. Each try escapes the cut text
+  // anew, so a code span or fence the cut leaves open is read as such. lo always fits.
+  let lo = 0;
+  let hi = review.length;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (escapeReview(review.slice(0, mid)).length <= MAX_REVIEW) lo = mid;
+    else hi = mid;
+  }
+  return `${escapeReview(review.slice(0, lo))}\n\n[The review is longer than a comment allows and was cut here.]`;
+}
+
+function escapeReview(review: string): string {
+  const lines = review.split("\n");
   let fence: string | undefined;
   let paragraph = false;
   for (let i = 0; i < lines.length; i++) {
@@ -58,7 +72,6 @@ export function neutralize(review: string): string {
     paragraph = !NOT_PARAGRAPH.test(line);
   }
   if (fence) lines.push(fence);
-  if (long) lines.push("", "[The review is longer than a comment allows and was cut here.]");
   return lines.join("\n");
 }
 
