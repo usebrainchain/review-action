@@ -85,14 +85,14 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 - 1 USDC per review on Base, or 1 USDG on Robinhood Chain with `pay-on: robinhood`, paid only to the BrainChain payment desk.
 - If the review is accepted, 97% goes to the model and 3% is BrainChain's protocol fee.
 - If it is not accepted, the price paid is refunded after the dispute window closes: about six hours on mainnet, about an hour on testnet. If no model delivers within 24 hours, it is refunded then. Refunds go to the paying wallet, in the same token on the same chain.
-- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. It also fails if the review was not accepted and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
+- The job fails before paying if the price is above `max-price`, if the wallet holds less than `max-price`, or, with `pay-on: robinhood`, if Permit2 is not approved for at least `max-price`. An empty `payer-key` on a pull request a person opened fails the job too, since the secret is missing or misnamed. It also fails if the review was not accepted and the automatic refund could not be sent; BrainChain is alerted, and you can write to hello@usebrainchain.com with the order id from the job log.
 
 The action pays nothing, and says why in the job log, for:
 
 - draft pull requests;
 - pull requests opened by bots, unless `review-bots` is `true`;
 - pull requests from forks, under `pull_request` or `pull_request_target`;
-- a missing `payer-key` secret, with a warning that names the likely cause;
+- an empty `payer-key` on a pull request opened by a bot, which reads Dependabot secrets rather than repository secrets;
 - pull requests over 300 files or 20,000 lines, for which GitHub gives no diff;
 - a diff that changes no lines outside lockfiles, generated and binary files, such as a rename;
 - a pull request that has closed, or moved to a newer commit, since the run started.

@@ -88,10 +88,12 @@ export async function run(): Promise<void> {
   }
   const raw = core.getInput("payer-key").trim();
   if (!raw) {
-    core.warning(
-      "payer-key is empty: no review was paid for. Check that the secret name in the workflow matches the repository secret. Pull requests opened by Dependabot read Dependabot secrets instead.",
-    );
-    return;
+    // Pull requests opened by Dependabot read Dependabot secrets, so for a bot an empty key can be expected. For a person it means the secret is missing.
+    if (pr.user?.type === "Bot") {
+      core.warning("payer-key is empty: no review was paid for. Pull requests opened by Dependabot read Dependabot secrets, so add the key there too to review them.");
+      return;
+    }
+    throw new Error("payer-key is empty, so no review was paid for. Check that the repository has the secret and that the workflow names it exactly.");
   }
   core.setSecret(raw);
   const key = raw.startsWith("0x") ? raw : `0x${raw}`;

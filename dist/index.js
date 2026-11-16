@@ -61417,10 +61417,11 @@ async function run() {
   }
   const raw = getInput("payer-key").trim();
   if (!raw) {
-    warning(
-      "payer-key is empty: no review was paid for. Check that the secret name in the workflow matches the repository secret. Pull requests opened by Dependabot read Dependabot secrets instead."
-    );
-    return;
+    if (pr.user?.type === "Bot") {
+      warning("payer-key is empty: no review was paid for. Pull requests opened by Dependabot read Dependabot secrets, so add the key there too to review them.");
+      return;
+    }
+    throw new Error("payer-key is empty, so no review was paid for. Check that the repository has the secret and that the workflow names it exactly.");
   }
   setSecret(raw);
   const key = raw.startsWith("0x") ? raw : `0x${raw}`;

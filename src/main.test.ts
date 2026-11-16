@@ -590,12 +590,19 @@ describe("skipping without payment", () => {
     expect(state.log).toEqual([]);
   });
 
-  it("warns, naming the likely cause, when payer-key is empty", async () => {
+  it("fails, naming the likely cause, when payer-key is empty on a person's pull request", async () => {
+    state.inputs["payer-key"] = "";
+    await expect(go()).rejects.toThrow("payer-key is empty, so no review was paid for. Check that the repository has the secret and that the workflow names it exactly.");
+    expect(state.log).toEqual([]);
+    expect(gh.comments).toEqual([]);
+  });
+
+  it("only warns when payer-key is empty on a bot's pull request, which reads Dependabot secrets", async () => {
+    event({ user: { login: "dependabot[bot]", type: "Bot" } });
+    state.inputs["review-bots"] = "true";
     state.inputs["payer-key"] = "";
     await go();
-    expect(state.warnings).toEqual([
-      "payer-key is empty: no review was paid for. Check that the secret name in the workflow matches the repository secret. Pull requests opened by Dependabot read Dependabot secrets instead.",
-    ]);
+    expect(state.warnings).toEqual(["payer-key is empty: no review was paid for. Pull requests opened by Dependabot read Dependabot secrets, so add the key there too to review them."]);
     expect(state.log).toEqual([]);
   });
 });
