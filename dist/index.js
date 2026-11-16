@@ -61512,8 +61512,8 @@ async function run() {
     await checkFunds(preset2, account.address, maxPrice);
     restore = mine?.body;
     let checkpoint;
-    const record2 = async ({ order: order2, price }) => {
-      mine = await save(keep(`BrainChain is reviewing ${short}.`, { order: order2, commit: head, price })).catch((error63) => {
+    const record2 = async ({ order: order2, price: price2 }) => {
+      mine = await save(keep(`BrainChain is reviewing ${short}.`, { order: order2, commit: head, price: price2 })).catch((error63) => {
         throw new Error(
           error63 instanceof GitHubError && [401, 403, 404].includes(error63.status) ? `Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure2(error63)}` : `GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for. Re-run the job once GitHub accepts comments. ${failure2(error63)}`
         );
@@ -61527,8 +61527,11 @@ async function run() {
       throw error63;
     }
     setOutput("order", posted.order);
-    const spent = `Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}`;
-    await summarize(`${spent} for the review of ${short}: order \`${posted.order}\`.`);
+    const price = `${amount(posted.price)} ${preset2.token} on ${preset2.chain}`;
+    const spent = `Paid ${price}`;
+    await summarize(
+      posted.uncertain ? `Signed a payment of ${price} for the review of ${short}, but BrainChain's confirmation was lost: order \`${posted.order}\`.` : `${spent} for the review of ${short}: order \`${posted.order}\`.`
+    );
     info(`${spent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
       `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
@@ -61611,9 +61614,9 @@ async function run() {
       throw new Error(outcome.reason);
     case "waiting":
       if (outcome.state === "unknown") {
-        warning(
-          `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`
-        );
+        const missing = `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`;
+        if (!posted.uncertain) throw new Error(missing);
+        warning(missing);
         return;
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));

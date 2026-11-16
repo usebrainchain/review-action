@@ -397,6 +397,24 @@ describe("paying once per commit", () => {
     expect(gh.comments).toEqual([]);
   });
 
+  it("fails when BrainChain confirmed the order but still has no record of it when the job stops waiting", async () => {
+    desk.check.mockResolvedValue({ kind: "waiting", state: "unknown" });
+    await expect(go()).rejects.toThrow(`BrainChain has no record of order ${ORDER}. If `);
+    expect(state.summary[0]).toBe(`Paid 1 test USDC on Base Sepolia for the review of aaaaaaa: order \`${ORDER}\`.`);
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+  });
+
+  it("warns instead, and says so in the job summary, when the confirmation was lost", async () => {
+    desk.post.mockImplementation(async (_preset: unknown, _account: unknown, _maxPrice: unknown, _brief: unknown, record: Recorder) => {
+      await record({ order: ORDER, price: 1_000_000n });
+      return { order: ORDER, price: 1_000_000n, uncertain: true };
+    });
+    desk.check.mockResolvedValue({ kind: "waiting", state: "unknown" });
+    await go();
+    expect(state.summary).toEqual([`Signed a payment of 1 test USDC on Base Sepolia for the review of aaaaaaa, but BrainChain's confirmation was lost: order \`${ORDER}\`.`]);
+    expect(state.warnings.at(-1)).toMatch(new RegExp(`^BrainChain has no record of order ${ORDER}\\. .*delete the comment on the pull request and re-run the job\\.$`));
+  });
+
   it("leaves accepted empty, and says a re-run posts the review, when the job stops waiting", async () => {
     desk.check.mockResolvedValue({ kind: "waiting", state: "hired" });
     await go();

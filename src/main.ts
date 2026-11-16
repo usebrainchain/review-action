@@ -223,9 +223,14 @@ export async function run(): Promise<void> {
       throw error;
     }
     core.setOutput("order", posted.order);
-    const spent = `Paid ${amount(posted.price)} ${preset.token} on ${preset.chain}`;
+    const price = `${amount(posted.price)} ${preset.token} on ${preset.chain}`;
+    const spent = `Paid ${price}`;
     // The job summary keeps the order even if the comment cannot be written again.
-    await summarize(`${spent} for the review of ${short}: order \`${posted.order}\`.`);
+    await summarize(
+      posted.uncertain
+        ? `Signed a payment of ${price} for the review of ${short}, but BrainChain's confirmation was lost: order \`${posted.order}\`.`
+        : `${spent} for the review of ${short}: order \`${posted.order}\`.`,
+    );
     core.info(`${spent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
       `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
@@ -316,9 +321,10 @@ export async function run(): Promise<void> {
       throw new Error(outcome.reason);
     case "waiting":
       if (outcome.state === "unknown") {
-        core.warning(
-          `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`,
-        );
+        const missing = `BrainChain has no record of order ${posted.order}. If ${account.address} shows a payment for it, write to hello@usebrainchain.com with the order id. If it shows none ten minutes after the payment was signed, nothing was charged: delete the comment on the pull request and re-run the job.`;
+        // Only a confirmation lost on the way leaves room for a payment that never reached the desk. Otherwise an order it does not know needs a person.
+        if (!posted.uncertain) throw new Error(missing);
+        core.warning(missing);
         return;
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));
