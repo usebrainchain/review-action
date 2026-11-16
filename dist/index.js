@@ -1309,7 +1309,7 @@ var require_util = __commonJS({
             }
             return controller.desiredSize > 0;
           },
-          async cancel(reason) {
+          async cancel(reason2) {
             await iterator.return();
           },
           type: "bytes"
@@ -1637,12 +1637,12 @@ var require_diagnostics = __commonJS({
         websocketDebuglog("connection opened %s%s", address, port ? `:${port}` : "");
       });
       diagnosticsChannel.channel("undici:websocket:close").subscribe((evt) => {
-        const { websocket, code, reason } = evt;
+        const { websocket, code, reason: reason2 } = evt;
         websocketDebuglog(
           "closed connection to %s - %s %s",
           websocket.url,
           code,
-          reason
+          reason2
         );
       });
       diagnosticsChannel.channel("undici:websocket:socket_error").subscribe((err) => {
@@ -5600,7 +5600,7 @@ Content-Type: ${value.type || "application/octet-stream"}\r
             }
             return controller.desiredSize > 0;
           },
-          async cancel(reason) {
+          async cancel(reason2) {
             await iterator.return();
           },
           type: "bytes"
@@ -9157,12 +9157,12 @@ var require_retry_handler = __commonJS({
         this.etag = null;
         this.resume = null;
         this.headersSent = false;
-        this.handler.onConnect((reason) => {
+        this.handler.onConnect((reason2) => {
           this.aborted = true;
           if (this.abort) {
-            this.abort(reason);
+            this.abort(reason2);
           } else {
-            this.reason = reason;
+            this.reason = reason2;
           }
         });
       }
@@ -11577,9 +11577,9 @@ var require_dump = __commonJS({
         this.#abort = abort;
         this.#handler.onConnect(this.#customAbort.bind(this));
       }
-      #customAbort(reason) {
+      #customAbort(reason2) {
         this.#aborted = true;
-        this.#reason = reason;
+        this.#reason = reason2;
       }
       // TODO: will require adjustment after new hooks are out
       onHeaders(statusCode, rawHeaders, resume, statusMessage) {
@@ -12606,13 +12606,13 @@ var require_response = __commonJS({
         urlList: init?.urlList ? [...init.urlList] : []
       };
     }
-    function makeNetworkError(reason) {
-      const isError = isErrorLike(reason);
+    function makeNetworkError(reason2) {
+      const isError = isErrorLike(reason2);
       return makeResponse({
         type: "error",
         status: 0,
-        error: isError ? reason : new Error(reason ? String(reason) : reason),
-        aborted: reason && reason.name === "AbortError"
+        error: isError ? reason2 : new Error(reason2 ? String(reason2) : reason2),
+        aborted: reason2 && reason2.name === "AbortError"
       });
     }
     function isNetworkError(response) {
@@ -13594,13 +13594,13 @@ var require_fetch = __commonJS({
         this.dump = false;
         this.state = "ongoing";
       }
-      terminate(reason) {
+      terminate(reason2) {
         if (this.state !== "ongoing") {
           return;
         }
         this.state = "terminated";
-        this.connection?.destroy(reason);
-        this.emit("terminated", reason);
+        this.connection?.destroy(reason2);
+        this.emit("terminated", reason2);
       }
       // https://fetch.spec.whatwg.org/#fetch-controller-abort
       abort(error63) {
@@ -13879,7 +13879,7 @@ var require_fetch = __commonJS({
         fetchParams.controller.dump = true;
       }
       if (request.integrity) {
-        const processBodyError = (reason) => fetchFinale(fetchParams, makeNetworkError(reason));
+        const processBodyError = (reason2) => fetchFinale(fetchParams, makeNetworkError(reason2));
         if (request.responseTainting === "opaque" || response.body == null) {
           processBodyError(response.error);
           return;
@@ -14357,9 +14357,9 @@ var require_fetch = __commonJS({
       const pullAlgorithm = async () => {
         await fetchParams.controller.resume();
       };
-      const cancelAlgorithm = (reason) => {
+      const cancelAlgorithm = (reason2) => {
         if (!isCancelled(fetchParams)) {
-          fetchParams.controller.abort(reason);
+          fetchParams.controller.abort(reason2);
         }
       };
       const stream = new ReadableStream(
@@ -14370,8 +14370,8 @@ var require_fetch = __commonJS({
           async pull(controller) {
             await pullAlgorithm(controller);
           },
-          async cancel(reason) {
-            await cancelAlgorithm(reason);
+          async cancel(reason2) {
+            await cancelAlgorithm(reason2);
           },
           type: "bytes"
         }
@@ -14421,7 +14421,7 @@ var require_fetch = __commonJS({
           }
         }
       };
-      function onAborted(reason) {
+      function onAborted(reason2) {
         if (isAborted(fetchParams)) {
           response.aborted = true;
           if (isReadable(stream)) {
@@ -14432,7 +14432,7 @@ var require_fetch = __commonJS({
         } else {
           if (isReadable(stream)) {
             fetchParams.controller.controller.error(new TypeError("terminated", {
-              cause: isErrorLike(reason) ? reason : void 0
+              cause: isErrorLike(reason2) ? reason2 : void 0
             }));
           }
         }
@@ -17008,16 +17008,16 @@ var require_util7 = __commonJS({
       }
       return code >= 3e3 && code <= 4999;
     }
-    function failWebsocketConnection(ws, reason) {
+    function failWebsocketConnection(ws, reason2) {
       const { [kController]: controller, [kResponse]: response } = ws;
       controller.abort();
       if (response?.socket && !response.socket.destroyed) {
         response.socket.destroy();
       }
-      if (reason) {
+      if (reason2) {
         fireEvent("error", ws, (type, init) => new ErrorEvent(type, init), {
-          error: new Error(reason),
-          message: reason
+          error: new Error(reason2),
+          message: reason2
         });
       }
     }
@@ -17275,7 +17275,7 @@ var require_connection = __commonJS({
       });
       return controller;
     }
-    function closeWebSocketConnection(ws, code, reason, reasonByteLength) {
+    function closeWebSocketConnection(ws, code, reason2, reasonByteLength) {
       if (isClosing(ws) || isClosed(ws)) {
       } else if (!isEstablished(ws)) {
         failWebsocketConnection(ws, "Connection was closed before it was established.");
@@ -17283,13 +17283,13 @@ var require_connection = __commonJS({
       } else if (ws[kSentClose] === sentCloseFrameState.NOT_SENT) {
         ws[kSentClose] = sentCloseFrameState.PROCESSING;
         const frame = new WebsocketFrameSend();
-        if (code !== void 0 && reason === void 0) {
+        if (code !== void 0 && reason2 === void 0) {
           frame.frameData = Buffer.allocUnsafe(2);
           frame.frameData.writeUInt16BE(code, 0);
-        } else if (code !== void 0 && reason !== void 0) {
+        } else if (code !== void 0 && reason2 !== void 0) {
           frame.frameData = Buffer.allocUnsafe(2 + reasonByteLength);
           frame.frameData.writeUInt16BE(code, 0);
-          frame.frameData.write(reason, 2, "utf-8");
+          frame.frameData.write(reason2, 2, "utf-8");
         } else {
           frame.frameData = emptyBuffer;
         }
@@ -17314,11 +17314,11 @@ var require_connection = __commonJS({
       response.socket.off("error", onSocketError);
       const wasClean = ws[kSentClose] === sentCloseFrameState.SENT && ws[kReceivedClose];
       let code = 1005;
-      let reason = "";
+      let reason2 = "";
       const result = ws[kByteParser].closingInfo;
       if (result && !result.error) {
         code = result.code ?? 1005;
-        reason = result.reason;
+        reason2 = result.reason;
       } else if (!ws[kReceivedClose]) {
         code = 1006;
       }
@@ -17326,13 +17326,13 @@ var require_connection = __commonJS({
       fireEvent("close", ws, (type, init) => new CloseEvent(type, init), {
         wasClean,
         code,
-        reason
+        reason: reason2
       });
       if (channels.close.hasSubscribers) {
         channels.close.publish({
           websocket: ws,
           code,
-          reason
+          reason: reason2
         });
       }
     }
@@ -17456,9 +17456,9 @@ var require_receiver = __commonJS({
     var { closeWebSocketConnection } = require_connection();
     var { PerMessageDeflate } = require_permessage_deflate();
     var { MessageSizeExceededError } = require_errors();
-    function failWebsocketConnectionWithCode(ws, code, reason) {
-      closeWebSocketConnection(ws, code, reason, Buffer.byteLength(reason));
-      failWebsocketConnection(ws, reason);
+    function failWebsocketConnectionWithCode(ws, code, reason2) {
+      closeWebSocketConnection(ws, code, reason2, Buffer.byteLength(reason2));
+      failWebsocketConnection(ws, reason2);
     }
     var ByteParser = class extends Writable {
       #buffers = [];
@@ -17738,16 +17738,16 @@ var require_receiver = __commonJS({
         if (code !== void 0 && !isValidStatusCode(code)) {
           return { code: 1002, reason: "Invalid status code", error: true };
         }
-        let reason = data.subarray(2);
-        if (reason[0] === 239 && reason[1] === 187 && reason[2] === 191) {
-          reason = reason.subarray(3);
+        let reason2 = data.subarray(2);
+        if (reason2[0] === 239 && reason2[1] === 187 && reason2[2] === 191) {
+          reason2 = reason2.subarray(3);
         }
         try {
-          reason = utf8Decode(reason);
+          reason2 = utf8Decode(reason2);
         } catch {
           return { code: 1007, reason: "Invalid UTF-8", error: true };
         }
-        return { code, reason, error: false };
+        return { code, reason: reason2, error: false };
       }
       /**
        * Parses control frames.
@@ -17762,9 +17762,9 @@ var require_receiver = __commonJS({
           }
           this.#info.closeInfo = this.parseCloseBody(body);
           if (this.#info.closeInfo.error) {
-            const { code, reason } = this.#info.closeInfo;
-            closeWebSocketConnection(this.ws, code, reason, reason.length);
-            failWebsocketConnection(this.ws, reason);
+            const { code, reason: reason2 } = this.#info.closeInfo;
+            closeWebSocketConnection(this.ws, code, reason2, reason2.length);
+            failWebsocketConnection(this.ws, reason2);
             return false;
           }
           if (this.ws[kSentClose] !== sentCloseFrameState.SENT) {
@@ -18001,14 +18001,14 @@ var require_websocket = __commonJS({
        * @param {number|undefined} code
        * @param {string|undefined} reason
        */
-      close(code = void 0, reason = void 0) {
+      close(code = void 0, reason2 = void 0) {
         webidl.brandCheck(this, _WebSocket);
         const prefix = "WebSocket.close";
         if (code !== void 0) {
           code = webidl.converters["unsigned short"](code, prefix, "code", { clamp: true });
         }
-        if (reason !== void 0) {
-          reason = webidl.converters.USVString(reason, prefix, "reason");
+        if (reason2 !== void 0) {
+          reason2 = webidl.converters.USVString(reason2, prefix, "reason");
         }
         if (code !== void 0) {
           if (code !== 1e3 && (code < 3e3 || code > 4999)) {
@@ -18016,8 +18016,8 @@ var require_websocket = __commonJS({
           }
         }
         let reasonByteLength = 0;
-        if (reason !== void 0) {
-          reasonByteLength = Buffer.byteLength(reason);
+        if (reason2 !== void 0) {
+          reasonByteLength = Buffer.byteLength(reason2);
           if (reasonByteLength > 123) {
             throw new DOMException(
               `Reason must be less than 123 bytes; received ${reasonByteLength}`,
@@ -18025,7 +18025,7 @@ var require_websocket = __commonJS({
             );
           }
         }
-        closeWebSocketConnection(this, code, reason, reasonByteLength);
+        closeWebSocketConnection(this, code, reason2, reasonByteLength);
       }
       /**
        * @see https://websockets.spec.whatwg.org/#dom-websocket-send
@@ -23020,16 +23020,16 @@ ${prettyStateOverride(stateOverride)}`;
         let cause;
         let decodedData;
         let metaMessages;
-        let reason;
+        let reason2;
         if (data && data !== "0x") {
           try {
             decodedData = decodeErrorResult({ abi: abi2, data, cause: error63 });
             const { abiItem, errorName, args: errorArgs } = decodedData;
             if (errorName === "Error") {
-              reason = errorArgs[0];
+              reason2 = errorArgs[0];
             } else if (errorName === "Panic") {
               const [firstArg] = errorArgs;
-              reason = panicReasons[firstArg];
+              reason2 = panicReasons[firstArg];
             } else {
               const errorWithParams = abiItem ? formatAbiItem2(abiItem, { includeName: true }) : void 0;
               const formattedArgs = abiItem && errorArgs ? formatAbiItemWithArgs({
@@ -23047,7 +23047,7 @@ ${prettyStateOverride(stateOverride)}`;
             cause = err;
           }
         } else if (message)
-          reason = message;
+          reason2 = message;
         let signature;
         if (cause instanceof AbiErrorSignatureNotFoundError) {
           signature = cause.signature;
@@ -23057,9 +23057,9 @@ ${prettyStateOverride(stateOverride)}`;
             `You can look up the decoded signature here: https://4byte.sourcify.dev/?q=${signature}.`
           ];
         }
-        super(reason && reason !== "execution reverted" || signature ? [
+        super(reason2 && reason2 !== "execution reverted" || signature ? [
           `The contract function "${functionName}" reverted with the following ${signature ? "signature" : "reason"}:`,
-          reason || signature
+          reason2 || signature
         ].join("\n") : `The contract function "${functionName}" reverted.`, {
           cause: cause ?? error63,
           metaMessages,
@@ -23091,7 +23091,7 @@ ${prettyStateOverride(stateOverride)}`;
         });
         this.data = decodedData;
         this.raw = data;
-        this.reason = reason;
+        this.reason = reason2;
         this.signature = signature;
       }
     };
@@ -26237,8 +26237,8 @@ var init_node = __esm({
     init_base();
     ExecutionRevertedError = class extends BaseError2 {
       constructor({ cause, message } = {}) {
-        const reason = message?.replace("execution reverted: ", "")?.replace("execution reverted", "");
-        super(`Execution reverted ${reason ? `with reason: ${reason}` : "for an unknown reason"}.`, {
+        const reason2 = message?.replace("execution reverted: ", "")?.replace("execution reverted", "");
+        super(`Execution reverted ${reason2 ? `with reason: ${reason2}` : "for an unknown reason"}.`, {
           cause,
           name: "ExecutionRevertedError"
         });
@@ -32548,8 +32548,8 @@ var EnsAvatarInvalidMetadataError = class extends BaseError2 {
   }
 };
 var EnsAvatarInvalidNftUriError = class extends BaseError2 {
-  constructor({ reason }) {
-    super(`ENS NFT avatar URI is invalid. ${reason}`, {
+  constructor({ reason: reason2 }) {
+    super(`ENS NFT avatar URI is invalid. ${reason2}`, {
       name: "EnsAvatarInvalidNftUriError"
     });
   }
@@ -61219,9 +61219,18 @@ async function call2(token, path, init = {}) {
   });
   if (!response.ok) {
     const limited = response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
-    throw new GitHubError(`GitHub answered ${response.status}${limited ? " (rate limited)" : ""} for ${path}: ${(await response.text()).slice(0, 200)}`, limited ? 429 : response.status);
+    const answer = `GitHub answered ${response.status}${limited ? " (rate limited)" : ""} for ${path}: ${reason(await response.text())}`;
+    throw new GitHubError(response.status === 401 ? `The github-token was rejected: ${answer}` : answer, limited ? 429 : response.status);
   }
   return response;
+}
+function reason(body) {
+  try {
+    const message = JSON.parse(body)?.message;
+    if (typeof message === "string" && message.trim()) return message.replace(/\s+/g, " ").trim().slice(0, 200);
+  } catch {
+  }
+  return body.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 async function diff(token, repo, number4) {
   try {
@@ -61387,8 +61396,8 @@ function failure2(error63) {
   let cause = error63 instanceof Error ? error63.cause : void 0;
   while (cause instanceof Error && cause.cause instanceof Error) cause = cause.cause;
   if (!(cause instanceof Error)) return message;
-  const reason = cause.message || (cause instanceof AggregateError ? cause.errors.map(String).join("; ") : "");
-  return reason && !message.includes(reason) ? `${message} (${reason})` : message;
+  const reason2 = cause.message || (cause instanceof AggregateError ? cause.errors.map(String).join("; ") : "");
+  return reason2 && !message.includes(reason2) ? `${message} (${reason2})` : message;
 }
 async function checkFunds(preset2, owner, maxPrice) {
   const reader = createPublicClient({ transport: http(preset2.rpc, { timeout: 15e3, retryCount: 2 }) });
@@ -61532,7 +61541,7 @@ async function run() {
     const record2 = async ({ order: order2, price: price2 }) => {
       mine = await save(keep(`BrainChain is reviewing ${short}.`, { order: order2, commit: head, price: price2 })).catch((error63) => {
         throw new Error(
-          error63 instanceof GitHubError && [401, 403, 404].includes(error63.status) ? `Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure2(error63)}` : `GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for. Re-run the job once GitHub accepts comments. ${failure2(error63)}`
+          error63 instanceof GitHubError && [401, 403, 404].includes(error63.status) ? `Could not comment on the pull request, so no review was paid for.${error63.status === 401 ? "" : " The github-token needs pull-requests: write."} ${failure2(error63)}` : `GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for. Re-run the job once GitHub accepts comments. ${failure2(error63)}`
         );
       });
       checkpoint = order2;

@@ -217,7 +217,7 @@ export async function run(): Promise<void> {
       mine = await save(keep(`BrainChain is reviewing ${short}.`, { order, commit: head, price })).catch((error: unknown) => {
         throw new Error(
           error instanceof GitHubError && [401, 403, 404].includes(error.status)
-            ? `Could not comment on the pull request, so no review was paid for. The github-token needs pull-requests: write. ${failure(error)}`
+            ? `Could not comment on the pull request, so no review was paid for.${error.status === 401 ? "" : " The github-token needs pull-requests: write."} ${failure(error)}`
             : `GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for. Re-run the job once GitHub accepts comments. ${failure(error)}`,
         );
       });

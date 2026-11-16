@@ -24,9 +24,21 @@ async function call(token: string, path: string, init: RequestInit & { accept?: 
   if (!response.ok) {
     // GitHub refuses a rate-limited request with 403 as well as 429. As 429 it is tried again, and not taken for a missing permission.
     const limited = response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
-    throw new GitHubError(`GitHub answered ${response.status}${limited ? " (rate limited)" : ""} for ${path}: ${(await response.text()).slice(0, 200)}`, limited ? 429 : response.status);
+    const answer = `GitHub answered ${response.status}${limited ? " (rate limited)" : ""} for ${path}: ${reason(await response.text())}`;
+    throw new GitHubError(response.status === 401 ? `The github-token was rejected: ${answer}` : answer, limited ? 429 : response.status);
   }
   return response;
+}
+
+/** GitHub's own message when the body is JSON. A failed job shows an error's first line only, and GitHub pretty-prints its JSON. */
+function reason(body: string): string {
+  try {
+    const message = (JSON.parse(body) as { message?: unknown } | null)?.message;
+    if (typeof message === "string" && message.trim()) return message.replace(/\s+/g, " ").trim().slice(0, 200);
+  } catch {
+    // Not JSON: the text itself, on one line.
+  }
+  return body.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
 /** The pull request's diff, or undefined when GitHub will not produce one: over 300 files or 20,000 lines. */

@@ -94,6 +94,23 @@ describe("commenter", () => {
   });
 });
 
+describe("errors", () => {
+  it("print GitHub's message from a pretty-printed body on one line, since a failed job shows the first line only", async () => {
+    const pretty = JSON.stringify({ message: "Resource not accessible by integration", documentation_url: "https://docs.github.com/rest", status: "403" }, null, 2);
+    github({ POST: () => new Response(pretty, { status: 403, headers: { "content-type": "application/json" } }) });
+    await expect(comment("t", "acme/api", 3, "new")).rejects.toThrow(/^GitHub answered 403 for \/repos\/acme\/api\/issues\/3\/comments: Resource not accessible by integration$/);
+    github({ POST: () => new Response("<html>\n<body>Unicorn</body>\n</html>", { status: 502 }) });
+    await expect(comment("t", "acme/api", 3, "new")).rejects.toThrow(/^GitHub answered 502 for \/repos\/acme\/api\/issues\/3\/comments: <html> <body>Unicorn<\/body> <\/html>$/);
+  });
+
+  it("say the github-token was rejected on a 401", async () => {
+    github({ GET: () => new Response(JSON.stringify({ message: "Bad credentials", status: "401" }, null, 2), { status: 401 }) });
+    const error = (await ownComment("t", "acme/api", 3, undefined, MARKER).catch((e: unknown) => e)) as GitHubError;
+    expect(error.status).toBe(401);
+    expect(error.message).toBe("The github-token was rejected: GitHub answered 401 for /repos/acme/api/issues/3/comments?per_page=100&page=1: Bad credentials");
+  });
+});
+
 describe("diff", () => {
   it("is undefined when GitHub will not produce one, and fails on other errors", async () => {
     github({ GET: () => Response.json({ errors: [{ code: "too_large" }] }, { status: 406 }) });

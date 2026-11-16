@@ -421,6 +421,8 @@ describe("paying once per commit", () => {
     gh.postStatus = 403;
     await expect(go()).rejects.toThrow(/Could not comment on the pull request, so no review was paid for\. The github-token needs pull-requests: write\./);
     expect(state.log).toEqual(["read balanceOf", "post refused 403"]);
+    gh.postStatus = 401;
+    await expect(go()).rejects.toThrow(/^Could not comment on the pull request, so no review was paid for\. The github-token was rejected: GitHub answered 401 for /);
   });
 
   it("takes away the comment it made when the payment is not made, or when it does not settle", async () => {
