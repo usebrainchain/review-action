@@ -61443,15 +61443,20 @@ async function run() {
     throw new Error("payer-key is empty, so no review was paid for. Check that the repository has the secret and that the workflow names it exactly.");
   }
   setSecret(raw);
-  const key = raw.startsWith("0x") ? raw : `0x${raw}`;
+  const key = `0x${raw.replace(/^0x/i, "")}`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) throw new Error("payer-key must be a private key: 64 hex characters, with or without 0x.");
   setSecret(key);
+  let account;
+  try {
+    account = privateKeyToAccount(key);
+  } catch {
+    throw new Error("payer-key is not a valid private key.");
+  }
   const preset2 = preset(getInput("network") || "mainnet", getInput("pay-on") || "base");
   const maxPrice = units(getInput("max-price") || "1");
   const waitMinutes = Number(getInput("wait-minutes") || "20");
   if (!Number.isFinite(waitMinutes) || waitMinutes < 1 || waitMinutes > 300) throw new Error("wait-minutes must be between 1 and 300.");
   const token = getInput("github-token", { required: true });
-  const account = privateKeyToAccount(key);
   const deadline = started + waitMinutes * 6e4;
   const head = pr.head.sha;
   const short = head.slice(0, 7);

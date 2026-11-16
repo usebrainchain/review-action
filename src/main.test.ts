@@ -630,6 +630,27 @@ describe("skipping without payment", () => {
   });
 });
 
+describe("payer-key", () => {
+  it("is refused without echoing its value when it is outside the curve's range", async () => {
+    for (const key of ["f".repeat(64), "0".repeat(64)]) {
+      state.inputs["payer-key"] = key;
+      const error = (await go().catch((e: unknown) => e)) as Error;
+      expect(error.message).toBe("payer-key is not a valid private key.");
+    }
+    expect(gh.comments).toEqual([]);
+    expect(desk.post).not.toHaveBeenCalled();
+  });
+
+  it("takes 0x or 0X in front of the hex, or neither", async () => {
+    for (const key of [KEY, KEY.slice(2), `0X${KEY.slice(2)}`]) {
+      state.inputs["payer-key"] = key;
+      gh.comments = [];
+      await go();
+    }
+    expect(desk.post).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe("funds", () => {
   it("pays with a warning when the balance cannot be read", async () => {
     state.reads.balanceOf = new Error("HTTP request failed.\n\nURL: https://sepolia.base.org", { cause: new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND sepolia.base.org") }) });

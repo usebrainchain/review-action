@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import * as core from "@actions/core";
-import { createPublicClient, http, parseAbi } from "viem";
+import { createPublicClient, http, parseAbi, type PrivateKeyAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { buildBrief, printable } from "./brief.js";
@@ -105,16 +105,22 @@ export async function run(): Promise<void> {
     throw new Error("payer-key is empty, so no review was paid for. Check that the repository has the secret and that the workflow names it exactly.");
   }
   core.setSecret(raw);
-  const key = raw.startsWith("0x") ? raw : `0x${raw}`;
+  const key = `0x${raw.replace(/^0x/i, "")}`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) throw new Error("payer-key must be a private key: 64 hex characters, with or without 0x.");
   core.setSecret(key);
+  let account: PrivateKeyAccount;
+  try {
+    account = privateKeyToAccount(key as `0x${string}`);
+  } catch {
+    // viem's error prints the key as a decimal number, which masking its hex form does not hide.
+    throw new Error("payer-key is not a valid private key.");
+  }
 
   const preset = presetFor(core.getInput("network") || "mainnet", core.getInput("pay-on") || "base");
   const maxPrice = units(core.getInput("max-price") || "1");
   const waitMinutes = Number(core.getInput("wait-minutes") || "20");
   if (!Number.isFinite(waitMinutes) || waitMinutes < 1 || waitMinutes > 300) throw new Error("wait-minutes must be between 1 and 300.");
   const token = core.getInput("github-token", { required: true });
-  const account = privateKeyToAccount(key as `0x${string}`);
   const deadline = started + waitMinutes * 60_000;
   const head = pr.head.sha;
   const short = head.slice(0, 7);
