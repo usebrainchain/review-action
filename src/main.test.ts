@@ -86,7 +86,10 @@ let gh: {
   comments: { id: number; body: string; login: string }[];
   pr: { state: string; head: { sha: string } };
   diff: string | number;
-  postStatus?: number;
+  /** A status every comment POST answers with instead of saving the comment; a list answers one status per POST, then saves. */
+  postStatus?: number | number[];
+  /** Refusals come as GitHub's rate limit sends them. */
+  limited?: boolean;
   /** A status every comment PATCH answers with instead of saving the comment; a list answers one status per PATCH, then saves. */
   patchStatus?: number | number[];
   /** Files at the head commit, served by the contents API. */
@@ -112,9 +115,11 @@ function stubGitHub() {
       return Response.json(gh.comments.map((c) => ({ id: c.id, body: c.body, html_url: `https://gh/c/${c.id}`, user: { login: c.login, type: c.login.endsWith("[bot]") ? "Bot" : "User" } })));
     }
     if (pathname === "/repos/acme/api/issues/3/comments" && method === "POST") {
-      if (gh.postStatus) {
-        state.log.push(`post refused ${gh.postStatus}`);
-        return new Response("Resource not accessible by integration", { status: gh.postStatus });
+      const refused = Array.isArray(gh.postStatus) ? gh.postStatus.shift() : gh.postStatus;
+      if (refused) {
+        state.log.push(`post refused ${refused}`);
+        if (gh.limited) return new Response("API rate limit exceeded", { status: refused, headers: { "x-ratelimit-remaining": "0" } });
+        return new Response("Resource not accessible by integration", { status: refused });
       }
       const c = { id: 100 + gh.comments.length, body: (JSON.parse(String(init.body)) as { body: string }).body, login: gh.login ?? "github-actions[bot]" };
       gh.comments.push(c);
@@ -282,6 +287,18 @@ describe("paying once per commit", () => {
     await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent/);
     expect(state.log).toEqual(["read balanceOf", "post refused 502", "post refused 502", "post refused 502"]);
     expect(gh.comments).toEqual([]);
+  });
+
+  it("tries the comment that records the order again when GitHub's rate limit refuses it, instead of asking for a permission", async () => {
+    gh.postStatus = [403, 403];
+    gh.limited = true;
+    await go();
+    expect(state.log.slice(0, 5)).toEqual(["read balanceOf", "post refused 403", "post refused 403", "post BrainChain is reviewing aaaaaaa.", "pay"]);
+    expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
+
+    gh.comments = [];
+    gh.postStatus = 403;
+    await expect(go()).rejects.toThrow(/^GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for\. Re-run the job once GitHub accepts comments\. GitHub answered 403 \(rate limited\)/);
   });
 
   it("fails naming the order when the desk names another order and the comment cannot record it", async () => {

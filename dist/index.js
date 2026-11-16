@@ -61199,7 +61199,10 @@ async function call2(token, path, init = {}) {
     },
     signal: AbortSignal.timeout(3e4)
   });
-  if (!response.ok) throw new GitHubError(`GitHub answered ${response.status} for ${path}: ${(await response.text()).slice(0, 200)}`, response.status);
+  if (!response.ok) {
+    const limited = response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
+    throw new GitHubError(`GitHub answered ${response.status}${limited ? " (rate limited)" : ""} for ${path}: ${(await response.text()).slice(0, 200)}`, limited ? 429 : response.status);
+  }
   return response;
 }
 async function diff(token, repo, number4) {

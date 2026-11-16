@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comment, commenter, diff, fileAt, ownComment, remove } from "./github.js";
+import { comment, commenter, diff, fileAt, GitHubError, ownComment, remove } from "./github.js";
 
 const MARKER = "<!-- brainchain-review -->";
 
@@ -29,6 +29,17 @@ describe("comment", () => {
       const calls = github({ PATCH: () => new Response("no", { status }), POST: () => Response.json({ id: 9, html_url: "https://gh/c/new" }) });
       expect((await comment("t", "acme/api", 3, "new", { id: 7 })).html_url).toBe("https://gh/c/new");
       expect(calls.map((c) => c.method)).toEqual(["PATCH", "POST"]);
+    }
+  });
+
+  it("takes a rate-limited 403 for 429: it fails to be tried again, and posts no second comment", async () => {
+    for (const headers of [{ "x-ratelimit-remaining": "0" }, { "retry-after": "60" }] as Record<string, string>[]) {
+      const calls = github({ PATCH: () => new Response("API rate limit exceeded", { status: 403, headers }), POST: () => Response.json({ id: 9 }) });
+      const error = (await comment("t", "acme/api", 3, "new", { id: 7 }).catch((e: unknown) => e)) as GitHubError;
+      expect(error).toBeInstanceOf(GitHubError);
+      expect(error.status).toBe(429);
+      expect(error.message).toMatch(/^GitHub answered 403 \(rate limited\) for /);
+      expect(calls.map((c) => c.method)).toEqual(["PATCH"]);
     }
   });
 
