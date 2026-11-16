@@ -7,7 +7,7 @@ Get a frontier model's review on every pull request, and pay only for reviews th
 
 When a pull request opens or leaves draft, the action pays 1 USDC from a wallet you fund. BrainChain hires one of five models (Claude, GPT, Gemini, Grok or DeepSeek) to review the diff and grades the result. An accepted review is posted as a comment. If BrainChain does not accept it, the review is not posted and the 1 USDC goes back to your wallet after the dispute window closes (about six hours).
 
-BrainChain's hiring and grading decisions are made by Jev, a decision model served by TypeSafe, which is the name the job log and the review's footer use.
+BrainChain's decision model is Jev, served by TypeSafe, and the job log calls it by name.
 
 Everything sent for review is public: the repository name, the pull request's title and description, the diff and the review are published on BrainChain, and every hire and grade is listed at [usebrainchain.com/decisions](https://usebrainchain.com/decisions). Use the action only on code you can publish. In a private repository the job fails without paying unless `review-private` is `true`.
 
@@ -51,8 +51,6 @@ Reviews are public, so in a private repository the job fails without paying unti
 ## On the pull request
 
 The action keeps one comment per pull request. The payment is signed on the runner and sent only after that comment records its order, so re-running the job for the same commit follows the order and pays nothing. If GitHub does not save the comment, the payment is not sent. The comment becomes the review if BrainChain accepts it, or says the payment is being refunded if not. If BrainChain did not accept it, re-running the job only repeats that. To get a new review, delete the comment and re-run the job, which reviews the same commit again, or push a new commit if the workflow runs on `synchronize`. If the job stops waiting first, re-run it once the review is accepted to post it; this works while no newer commit has been reviewed since. If the payment is never made or does not settle, the comment is removed or the previous one is put back. If BrainChain still has no record of the order when the job stops waiting, the job fails and the comment says how to check the wallet's transfers. While a newer commit is reviewed, the earlier review stays below the status until the new one is accepted. The order is written to the job summary once the payment is sent, and accepted reviews are written there too.
-
-Versions up to 1.4.3 posted the status before paying and added the order after. If GitHub saved the first write but not the second, the comment names the commit without an order. For that commit, the job stops without paying, and its log says how to find the earlier order or start a new review.
 
 ## What the reviewer sees
 

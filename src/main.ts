@@ -267,7 +267,7 @@ export async function run(): Promise<void> {
     );
     core.info(`${sent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
-      `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
+      `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if BrainChain accepts it; if not, the payment will be refunded.`,
       { order: posted.order, commit: head, price: posted.price },
     );
     const order = posted.order;
@@ -349,19 +349,19 @@ export async function run(): Promise<void> {
       if (!superseded) {
         await update(
           keep(
-            `Jev did not accept the review of ${short}, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.`,
+            `BrainChain did not accept the review of ${short}, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.`,
             paid,
             "is below",
           ),
         );
       }
       core.setOutput("accepted", "false");
-      core.notice(`Jev did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset.token} is being refunded to ${account.address} on ${preset.chain}.`);
+      core.notice(`BrainChain did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset.token} is being refunded to ${account.address} on ${preset.chain}.`);
       return;
     case "refund-failed":
-      if (!superseded) await update(keep(`Jev did not accept the review of ${short}. The refund could not be sent automatically, and BrainChain has been alerted.`, paid, "is below"));
+      if (!superseded) await update(keep(`BrainChain did not accept the review of ${short}. The refund could not be sent automatically, and BrainChain has been alerted.`, paid, "is below"));
       core.setOutput("accepted", "false");
-      throw new Error(`Jev did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
+      throw new Error(`BrainChain did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
     case "failed":
       await summarize(`The payment of ${amount(posted.price)} ${preset.token} on ${preset.chain} for the review of ${short} did not settle, so nothing was charged.`, true);
       if (!superseded) await undo();
@@ -374,9 +374,9 @@ export async function run(): Promise<void> {
         if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${check("this comment")}`, paid));
         throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${check("the comment on the pull request")}`);
       }
-      if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));
+      if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once BrainChain accepts it, without paying again.`, paid));
       core.warning(
-        `No graded review within ${minutes(waitMinutes)} of the job starting, so none is posted yet. The order keeps running, and re-running this job posts the review once Jev accepts it, without paying again: ${preset.desk}/x402/tasks/${posted.order}`,
+        `No graded review within ${minutes(waitMinutes)} of the job starting, so none is posted yet. The order keeps running, and re-running this job posts the review once BrainChain accepts it, without paying again: ${preset.desk}/x402/tasks/${posted.order}`,
       );
   }
 }

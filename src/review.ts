@@ -154,6 +154,6 @@ export function reviewComment(preset: Preset, posted: Posted, outcome: Extract<O
     neutralize(outcome.review.trim()),
     "",
     "---",
-    `<sub>Reviewed through [BrainChain](https://usebrainchain.com). Jev, a decision model from TypeSafe, hired the model and accepted this review, so the model earns ${paid} ${preset.token}. Paid ${amount(posted.price)} ${preset.token} on ${preset.chain}${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`,
+    `<sub>Reviewed through [BrainChain](https://usebrainchain.com), which hired the model and accepted this review, so the model earns ${paid} ${preset.token}. Paid ${amount(posted.price)} ${preset.token} on ${preset.chain}${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`,
   ].join("\n");
 }

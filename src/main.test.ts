@@ -213,7 +213,7 @@ describe("paying once per commit", () => {
       "read balanceOf",
       "post BrainChain is reviewing aaaaaaa.",
       "pay",
-      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
+      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if BrainChain accepts it; if not, the payment will be refunded.`,
       `output order=${ORDER}`,
       "output task-id=4",
       "edit ### BrainChain review",
@@ -361,9 +361,11 @@ describe("paying once per commit", () => {
     await go();
     expect(desk.post).not.toHaveBeenCalled();
     expect(desk.check).toHaveBeenCalledWith(expect.anything(), ORDER);
-    expect(state.log).toEqual([`output order=${ORDER}`, "output task-id=4", "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.", "output accepted=false"]);
+    expect(state.log).toEqual([`output order=${ORDER}`, "output task-id=4", "edit BrainChain did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.", "output accepted=false"]);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
-    expect(state.notices[0]).toMatch(/the 1 test USDC is being refunded/);
+    expect(state.notices).toEqual([
+      `BrainChain did not accept the review, so it is not posted and the 1 test USDC is being refunded to 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 on Base Sepolia.`,
+    ]);
   });
 
   it.each([
@@ -484,7 +486,7 @@ describe("paying once per commit", () => {
     await go();
     expect(state.outputs.accepted).toBeUndefined();
     expect(state.warnings.at(-1)).toMatch(/^No graded review within 1 minute of the job starting, so none is posted yet\./);
-    expect(visible(gh.comments[0]!.body)).toBe("The review of aaaaaaa is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.");
+    expect(visible(gh.comments[0]!.body)).toBe("The review of aaaaaaa is taking longer than this job waits for it. Re-running the job posts it once BrainChain accepts it, without paying again.");
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);
     state.inputs["wait-minutes"] = "2";
     gh.comments = [];
@@ -500,6 +502,24 @@ describe("paying once per commit", () => {
   });
 });
 
+describe("what the pull request and the run's annotations say", () => {
+  it.each([
+    { kind: "accepted", taskId: "4", review: "Looks correct." },
+    { kind: "rejected", taskId: "4" },
+    { kind: "refund-failed", taskId: "4" },
+    { kind: "waiting", taskId: "4", state: "hired" },
+  ])("names BrainChain, not its decision model, when the order is $kind", async (outcome) => {
+    desk.check.mockResolvedValue(outcome);
+    const error = await go().catch((e: unknown) => e as Error);
+    const said = [...gh.comments.map((c) => c.body), ...state.notices, ...state.warnings, ...(error ? [error.message] : [])];
+    expect(said.join("\n")).not.toMatch(/Jev|TypeSafe/);
+    if (outcome.kind === "refund-failed") {
+      expect(visible(gh.comments[0]!.body)).toBe("BrainChain did not accept the review of aaaaaaa. The refund could not be sent automatically, and BrainChain has been alerted.");
+      expect(error?.message).toMatch(/^BrainChain did not accept the review, and the refund to 0x\w+ could not be sent automatically\./);
+    }
+  });
+});
+
 describe("the earlier review", () => {
   const OLD = "b".repeat(40);
   const earlier = reviewComment(preset("testnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "3", review: "The old commit looks correct." }, OLD);
@@ -512,8 +532,8 @@ describe("the earlier review", () => {
     await go();
     expect(state.log.filter((line) => line.startsWith("edit"))).toEqual([
       "edit BrainChain is reviewing aaaaaaa. The review of bbbbbbb stays below until the new one is accepted.",
-      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded. The review of bbbbbbb stays below until the new one is accepted.`,
-      "edit Jev did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push. The review of bbbbbbb is below.",
+      `edit BrainChain is reviewing aaaaaaa (order \`${ORDER}\`). The review replaces this comment if BrainChain accepts it; if not, the payment will be refunded. The review of bbbbbbb stays below until the new one is accepted.`,
+      "edit BrainChain did not accept the review of aaaaaaa, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push. The review of bbbbbbb is below.",
     ]);
     expect(shownReview(gh.comments[0]!.body)).toBe(earlier);
     expect(paidFor(gh.comments[0]!.body)).toEqual(PAID);

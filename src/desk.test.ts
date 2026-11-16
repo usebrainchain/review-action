@@ -263,7 +263,7 @@ describe("reviewComment", () => {
   it("links the task on mainnet and states what the model earns", () => {
     const text = reviewComment(preset("mainnet", "base"), { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "9", review: "  No defects found.  " });
     expect(text).toContain("<!-- brainchain-review -->\n### BrainChain review\n\nNo defects found.\n");
-    expect(text).toContain("the model earns 0.97 USDC");
+    expect(text).toContain("Reviewed through [BrainChain](https://usebrainchain.com), which hired the model and accepted this review, so the model earns 0.97 USDC.");
     expect(text).toContain("Paid 1 USDC on Base; see [task 9](https://usebrainchain.com/task?id=9).</sub>");
     expect(text).not.toMatch(/#\d/);
     const testnet = reviewComment(base, { order: `0x${"cd".repeat(32)}`, price: 1_000_000n, uncertain: false }, { kind: "accepted", taskId: "22", review: "ok" }, "abcdef1234");

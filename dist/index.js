@@ -61370,7 +61370,7 @@ function reviewComment(preset2, posted, outcome, commit) {
     neutralize(outcome.review.trim()),
     "",
     "---",
-    `<sub>Reviewed through [BrainChain](https://usebrainchain.com). Jev, a decision model from TypeSafe, hired the model and accepted this review, so the model earns ${paid} ${preset2.token}. Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`
+    `<sub>Reviewed through [BrainChain](https://usebrainchain.com), which hired the model and accepted this review, so the model earns ${paid} ${preset2.token}. Paid ${amount(posted.price)} ${preset2.token} on ${preset2.chain}${task}.${commit ? ` Reviewed at ${commit.slice(0, 7)}.` : ""}</sub>`
   ].join("\n");
 }
 
@@ -61570,7 +61570,7 @@ async function run() {
     );
     info(`${sent}. Order ${posted.order}${posted.uncertain ? " (the confirmation was lost; waiting on that order)" : ""}.`);
     const reviewing = keep(
-      `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if Jev accepts it; if not, the payment will be refunded.`,
+      `BrainChain is reviewing ${short} (order \`${posted.order}\`). The review replaces this comment if BrainChain accepts it; if not, the payment will be refunded.`,
       { order: posted.order, commit: head, price: posted.price }
     );
     const order = posted.order;
@@ -61642,19 +61642,19 @@ async function run() {
       if (!superseded) {
         await update(
           keep(
-            `Jev did not accept the review of ${short}, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.`,
+            `BrainChain did not accept the review of ${short}, so it is not posted and the payment is being refunded. For a new review, delete this comment and re-run the job, or push a new commit if the workflow reviews each push.`,
             paid,
             "is below"
           )
         );
       }
       setOutput("accepted", "false");
-      notice(`Jev did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset2.token} is being refunded to ${account.address} on ${preset2.chain}.`);
+      notice(`BrainChain did not accept the review, so it is not posted and the ${amount(posted.price)} ${preset2.token} is being refunded to ${account.address} on ${preset2.chain}.`);
       return;
     case "refund-failed":
-      if (!superseded) await update(keep(`Jev did not accept the review of ${short}. The refund could not be sent automatically, and BrainChain has been alerted.`, paid, "is below"));
+      if (!superseded) await update(keep(`BrainChain did not accept the review of ${short}. The refund could not be sent automatically, and BrainChain has been alerted.`, paid, "is below"));
       setOutput("accepted", "false");
-      throw new Error(`Jev did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
+      throw new Error(`BrainChain did not accept the review, and the refund to ${account.address} could not be sent automatically. BrainChain has been alerted; write to hello@usebrainchain.com with order ${posted.order}.`);
     case "failed":
       await summarize(`The payment of ${amount(posted.price)} ${preset2.token} on ${preset2.chain} for the review of ${short} did not settle, so nothing was charged.`, true);
       if (!superseded) await undo();
@@ -61666,9 +61666,9 @@ async function run() {
         if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${check3("this comment")}`, paid));
         throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${check3("the comment on the pull request")}`);
       }
-      if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once Jev accepts it, without paying again.`, paid));
+      if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once BrainChain accepts it, without paying again.`, paid));
       warning(
-        `No graded review within ${minutes(waitMinutes)} of the job starting, so none is posted yet. The order keeps running, and re-running this job posts the review once Jev accepts it, without paying again: ${preset2.desk}/x402/tasks/${posted.order}`
+        `No graded review within ${minutes(waitMinutes)} of the job starting, so none is posted yet. The order keeps running, and re-running this job posts the review once BrainChain accepts it, without paying again: ${preset2.desk}/x402/tasks/${posted.order}`
       );
   }
 }
