@@ -38915,6 +38915,7 @@ function privateKeyToAccount(privateKey, options = {}) {
 
 // src/brief.ts
 var LIMITS = { title: 120, brief: 32e3, level: 200 };
+var MAX_BYTES = 63e3;
 var LEVELS = [
   "Names real defects in the diff with file, line and a concrete fix, or correctly finds none, and invents nothing",
   "Accurate and useful: at least one real point about the diff, nothing invented, though it may miss a defect",
@@ -39018,26 +39019,40 @@ function buildBrief(pr, diff2, sources) {
     ...skipped.length ? [`Not shown (lockfiles, generated and binary files): ${cut(skipped.map(printable).join(", "), 200)}`] : [],
     ""
   ].join("\n");
+  const title = cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title);
   const open3 = "```diff\n";
   const close = "\n```";
   const note = (shown2, total) => `
 The diff is cut at ${shown2.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} characters. Review only what is shown.`;
+  const wrap3 = (shown2, total) => `${head}${open3}${shown2}${close}${total === void 0 ? "" : note(shown2.length, total)}`;
+  const small = (brief2) => Buffer.byteLength(JSON.stringify({ title, brief: brief2, levels: LEVELS })) <= MAX_BYTES;
   const room = LIMITS.brief - head.length - open3.length - close.length;
   const lines = new Map([...sources ?? []].map(([path, text]) => [path, text.replace(/\n$/, "").split("\n")]));
   const bodies = CONTEXT.map((n) => kept.map((f) => compact(f, n, lines.get(f.path))).join("\n\n"));
-  const fit = bodies.findIndex((b) => b.length <= room);
+  const fit = bodies.findIndex((b) => b.length <= room && small(wrap3(b)));
   const body = bodies.at(fit);
   let shown = body;
-  let truncated = false;
-  if (body.length > room) {
-    truncated = true;
-    const budget = room - note(body.length, body.length).length;
-    const slice4 = body.slice(0, Math.max(0, budget));
-    shown = slice4.slice(0, Math.max(0, slice4.lastIndexOf("\n")));
+  const truncated = fit === -1;
+  if (truncated) {
+    const budget = Math.max(0, room - note(body.length, body.length).length);
+    const upTo = (n) => {
+      const slice4 = body.slice(0, n);
+      return slice4.slice(0, Math.max(0, slice4.lastIndexOf("\n")));
+    };
+    const fits = (n) => small(wrap3(upTo(n), body.length));
+    let lo = 0;
+    let hi = budget;
+    if (fits(hi)) lo = hi;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    shown = upTo(lo);
   }
-  const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : `${head}${open3}${shown}${close}${truncated ? note(shown.length, body.length) : ""}`;
+  const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : wrap3(shown, truncated ? body.length : void 0);
   return {
-    title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title),
+    title,
     brief,
     levels: LEVELS,
     skipped,

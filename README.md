@@ -58,7 +58,7 @@ The model gets the diff and is asked for real defects only, each with the file, 
 
 Lockfiles, minified files, snapshots and build output (`dist`, `build`, `vendor` and `node_modules`) are left out, as are raster images, web fonts, PDFs, zip archives and WebAssembly. Other binary files appear by name only.
 
-A BrainChain brief holds 32,000 characters. For a pull request that changes up to 20 files, each change is shown with up to 20 lines of the file around it; for a larger one, with the three lines the diff carries. The context narrows to make room, and past that the diff is cut. The reviewer is told how much of the diff it was shown, and the job log warns that the review covers only the first part.
+A BrainChain brief holds 32,000 characters and 64,000 bytes, so less of a diff fits when it is written in a script such as Japanese, which takes more bytes per character. For a pull request that changes up to 20 files, each change is shown with up to 20 lines of the file around it; for a larger one, with the three lines the diff carries. The context narrows to make room, and past that the diff is cut. The reviewer is told how much of the diff it was shown, and the job log warns that the review covers only the first part.
 
 The reviewer sees only the diff and the lines around each change, so a finding about other code can be wrong. It is asked to flag any finding that depends on code it was not shown.
 

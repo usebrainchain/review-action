@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBrief, compact, LIMITS, splitDiff } from "./brief.js";
+import { buildBrief, compact, LIMITS, MAX_BYTES, splitDiff } from "./brief.js";
 
 const file = (path: string, body: string) => `diff --git a/${path} b/${path}\nindex 1..2 100644\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,2 @@\n${body}\n`;
 const pr = { number: 7, title: "Fix the retry loop", body: "Retries now stop after three attempts.\n<!-- template -->", repo: "acme/api" };
+/** The task's size as the desk counts it. */
+const bytes = ({ title, brief, levels }: { title: string; brief: string; levels: string[] }) => Buffer.byteLength(JSON.stringify({ title, brief, levels }));
+const japanese = "日本語のコメントを書き直す";
 
 describe("buildBrief", () => {
   it("fits the desk's limits and keeps the levels within 200 characters", () => {
@@ -60,6 +63,28 @@ describe("buildBrief", () => {
     const brief = buildBrief(pr, many);
     expect(brief.brief).not.toContain(" 10 c1");
     expect(brief.brief).toContain(" 12 c3");
+  });
+
+  it("narrows the context when the diff fits in characters but not in the desk's bytes", () => {
+    const text = japanese.repeat(2);
+    const hunk = (start: number) => [`@@ -${start},7 +${start},7 @@`, ` ${text}1`, ` ${text}2`, ` ${text}3`, `-${text}old`, `+${text}new`, ` ${text}4`, ` ${text}5`, ` ${text}6`].join("\n");
+    const diff = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n${Array.from({ length: 100 }, (_, i) => hunk(10 + i * 20)).join("\n")}\n`;
+    const ascii = buildBrief(pr, diff.replaceAll(text, "x".repeat(text.length)));
+    expect(ascii.context).toBe(20);
+    const brief = buildBrief(pr, diff);
+    expect(brief.context).toBe(2);
+    expect(brief.truncated).toBe(false);
+    expect(bytes(brief)).toBeLessThanOrEqual(MAX_BYTES);
+  });
+
+  it("cuts a long non-ASCII diff to the desk's bytes, on a line boundary", () => {
+    const lines = Array.from({ length: 2_000 }, (_, i) => `+${japanese} ${i}`).join("\n");
+    const brief = buildBrief(pr, file("src/big.ts", lines));
+    expect(brief.truncated).toBe(true);
+    expect(brief.brief.length).toBeLessThanOrEqual(LIMITS.brief);
+    expect(bytes(brief)).toBeLessThanOrEqual(MAX_BYTES);
+    expect(bytes(brief)).toBeGreaterThan(MAX_BYTES - 200);
+    expect(brief.brief).toMatch(new RegExp(`${japanese} \\d+\n\`\`\`\nThe diff is cut at [\\d,]+ of [\\d,]+ characters\\. Review only what is shown\\.$`));
   });
 
   it("says so when nothing reviewable changed", () => {

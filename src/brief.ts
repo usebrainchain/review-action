@@ -1,8 +1,11 @@
 // The desk takes a title of up to 120 characters, a brief of up to 32,000 and
 // two or three quality levels of up to 200 each, best first; the work is paid
-// if it reaches the second level.
+// if it reaches the second level. It refuses a task over 64,000 bytes as JSON,
+// which a brief of non-ASCII text passes well within 32,000 characters.
 
 export const LIMITS = { title: 120, brief: 32_000, level: 200 } as const;
+/** Bytes the task may take as JSON, under the desk's 64,000 for what it adds. */
+export const MAX_BYTES = 63_000;
 
 export const LEVELS = [
   "Names real defects in the diff with file, line and a concrete fix, or correctly finds none, and invents nothing",
@@ -182,28 +185,43 @@ export function buildBrief(pr: PullRequest, diff: string, sources?: Map<string, 
     "",
   ].join("\n");
 
+  const title = cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title);
   const open = "```diff\n";
   const close = "\n```";
   const note = (shown: number, total: number) => `\nThe diff is cut at ${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} characters. Review only what is shown.`;
+  const wrap = (shown: string, total?: number) => `${head}${open}${shown}${close}${total === undefined ? "" : note(shown.length, total)}`;
+  const small = (brief: string) => Buffer.byteLength(JSON.stringify({ title, brief, levels: LEVELS })) <= MAX_BYTES;
   const room = LIMITS.brief - head.length - open.length - close.length;
   const lines = new Map([...(sources ?? [])].map(([path, text]) => [path, text.replace(/\n$/, "").split("\n")]));
   const bodies = CONTEXT.map((n) => kept.map((f) => compact(f, n, lines.get(f.path))).join("\n\n"));
   // When none fits, at(-1) takes the narrowest, which is then cut.
-  const fit = bodies.findIndex((b) => b.length <= room);
+  const fit = bodies.findIndex((b) => b.length <= room && small(wrap(b)));
   const body = bodies.at(fit)!;
 
   let shown = body;
-  let truncated = false;
-  if (body.length > room) {
-    truncated = true;
-    const budget = room - note(body.length, body.length).length;
-    const slice = body.slice(0, Math.max(0, budget));
-    shown = slice.slice(0, Math.max(0, slice.lastIndexOf("\n")));
+  const truncated = fit === -1;
+  if (truncated) {
+    const budget = Math.max(0, room - note(body.length, body.length).length);
+    const upTo = (n: number) => {
+      const slice = body.slice(0, n);
+      return slice.slice(0, Math.max(0, slice.lastIndexOf("\n")));
+    };
+    const fits = (n: number) => small(wrap(upTo(n), body.length));
+    // Whole lines within the characters left; when they still take too many bytes, the most lines that do not.
+    let lo = 0;
+    let hi = budget;
+    if (fits(hi)) lo = hi;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    shown = upTo(lo);
   }
-  const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : `${head}${open}${shown}${close}${truncated ? note(shown.length, body.length) : ""}`;
+  const brief = body.length === 0 ? `${head}The diff has no reviewable changes.` : wrap(shown, truncated ? body.length : undefined);
 
   return {
-    title: cut(`Review PR #${pr.number}: ${pr.title}`, LIMITS.title),
+    title,
     brief,
     levels: LEVELS,
     skipped,
