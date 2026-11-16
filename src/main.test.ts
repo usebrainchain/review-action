@@ -679,9 +679,15 @@ describe("funds", () => {
 
   it("on Robinhood Chain, fails before paying until Permit2 is approved for max-price", async () => {
     state.inputs["pay-on"] = "robinhood";
-    await expect(go()).rejects.toThrow(/lets Permit2 spend 0 test USDG on Robinhood Chain testnet, less than max-price 1 test USDG\. From that wallet, call approve\(0x000000000022D473030F116dDEE9F6B43aC78BA3, 1000000\) on the test USDG contract .* once; 1000000 is 1 test USDG.*Nothing was charged\./);
+    await expect(go()).rejects.toThrow(
+      /lets Permit2 spend 0 test USDG on Robinhood Chain testnet, less than max-price 1 test USDG\. Each review draws that allowance down, so approve what you plan to spend on reviews: from that wallet, call approve\(0x000000000022D473030F116dDEE9F6B43aC78BA3, amount\) on the test USDG contract 0x\w+, with the amount in 6 decimals \(20000000 is 20 test USDG, 20 reviews at max-price\)\. The approval is a transaction, so the wallet needs a little ETH on Robinhood Chain testnet for gas\. Nothing was charged\.$/,
+    );
     expect(desk.post).not.toHaveBeenCalled();
     expect(gh.comments).toEqual([]);
+    // What earlier reviews left of the allowance.
+    state.reads.allowance = 400_000n;
+    state.inputs["max-price"] = "2.5";
+    await expect(go()).rejects.toThrow(/lets Permit2 spend 0\.4 test USDG .* \(50000000 is 50 test USDG, 20 reviews at max-price\)/);
     state.reads.allowance = 2n ** 256n - 1n;
     await go();
     expect(desk.post).toHaveBeenCalledTimes(1);

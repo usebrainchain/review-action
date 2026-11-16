@@ -61409,8 +61409,9 @@ async function checkFunds(preset2, owner, maxPrice) {
   if (!preset2.permit2) return;
   const allowance = await read("Permit2 allowance", reader.readContract({ address: preset2.asset, abi: erc20, functionName: "allowance", args: [owner, PERMIT2] }));
   if (allowance !== void 0 && allowance < maxPrice) {
+    const budget = 20n * maxPrice;
     throw new Error(
-      `The paying wallet ${owner} lets Permit2 spend ${amount(allowance)} ${preset2.token} on ${preset2.chain}, less than max-price ${amount(maxPrice)} ${preset2.token}. From that wallet, call approve(${PERMIT2}, ${maxPrice}) on the ${preset2.token} contract ${preset2.asset} once; ${maxPrice} is ${amount(maxPrice)} ${preset2.token}, and a larger amount covers more reviews. Nothing was charged.`
+      `The paying wallet ${owner} lets Permit2 spend ${amount(allowance)} ${preset2.token} on ${preset2.chain}, less than max-price ${amount(maxPrice)} ${preset2.token}. Each review draws that allowance down, so approve what you plan to spend on reviews: from that wallet, call approve(${PERMIT2}, amount) on the ${preset2.token} contract ${preset2.asset}, with the amount in 6 decimals (${budget} is ${amount(budget)} ${preset2.token}, 20 reviews at max-price). The approval is a transaction, so the wallet needs a little ETH on ${preset2.chain} for gas. Nothing was charged.`
     );
   }
 }

@@ -10,7 +10,7 @@ inputs:
     description: Private key of the wallet that pays for reviews, from a repository secret. Fund that wallet with only what you plan to spend.
     required: true
   pay-on:
-    description: "base pays in USDC on Base with a signature alone; robinhood pays in USDG on Robinhood Chain after a one-time Permit2 approval."
+    description: "base pays in USDC on Base with a signature alone. robinhood pays in USDG on Robinhood Chain through Permit2: approve it for what you plan to spend, since each review draws the allowance down; the approval needs ETH for gas."
     default: base
   network:
     description: mainnet, or testnet for test USDC on Base Sepolia or test USDG on Robinhood Chain testnet.

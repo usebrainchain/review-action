@@ -67,7 +67,7 @@ The reviewer sees only the diff and the lines around each change, so a finding a
 | Input | Default | |
 | --- | --- | --- |
 | `payer-key` | required | Private key of the paying wallet, from a secret. |
-| `pay-on` | `base` | `base` pays in USDC on Base with a signature. `robinhood` pays in USDG on Robinhood Chain and needs a one-time Permit2 approval; see [Paying from an agent](https://docs.usebrainchain.com/agents). |
+| `pay-on` | `base` | `base` pays in USDC on Base with a signature. `robinhood` pays in USDG on Robinhood Chain through Permit2: approve Permit2 for what you plan to spend, since each review draws the allowance down, and keep a little ETH on Robinhood Chain for the approval's gas. See [Paying from an agent](https://docs.usebrainchain.com/agents). |
 | `network` | `mainnet` | `testnet` pays in test USDC on Base Sepolia, from [Circle's faucet](https://faucet.circle.com), or in test USDG on Robinhood Chain testnet. |
 | `max-price` | `1` | The most one review may cost. The wallet must hold at least this much, and the action pays nothing above it. |
 | `wait-minutes` | `20` | How long the job waits for the graded review, from 1 to 300. The time counts from when the action starts, so it includes paying but not posting the review. A review accepted after that is still paid for. |
