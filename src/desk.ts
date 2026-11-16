@@ -6,6 +6,8 @@ import { keccak256, toBytes, type PrivateKeyAccount } from "viem";
 import { amount, type Preset } from "./presets.js";
 
 const MAX_TIMEOUT_SECONDS = 600;
+/** How long each request to the desk may take, the one carrying the payment included. */
+const REQUEST_TIMEOUT = 120_000;
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export interface Brief {
@@ -30,7 +32,15 @@ export type Recorder = (signed: Pick<Posted, "order" | "price">) => Promise<void
  * has kept its order, so a run that stops at any point after leaves the order
  * behind for the next one. Throws only when nothing was charged.
  */
-export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice: bigint, brief: Brief, record: Recorder, fetchImpl: typeof fetch = fetch): Promise<Posted> {
+export async function post(
+  preset: Preset,
+  account: PrivateKeyAccount,
+  maxPrice: bigint,
+  brief: Brief,
+  record: Recorder,
+  fetchImpl: typeof fetch = fetch,
+  timeout = REQUEST_TIMEOUT,
+): Promise<Posted> {
   let signed: { payload: unknown } | undefined;
   /** Why the order could not be recorded, which kept the payment from being sent. */
   let unrecorded: { error: unknown } | undefined;
@@ -63,7 +73,9 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
         throw error;
       }
     }
-    const reply = await fetchImpl(input, init);
+    // Each request gets its own timeout, started once the order is recorded. A signal given to x402 reaches the request
+    // carrying the payment only through clones, whose link to it is lost once they are collected, and record() spent its time.
+    const reply = await fetchImpl(input, { ...init, signal: AbortSignal.timeout(timeout) });
     if (reply.status === 402) asked = challengePrice(reply, preset);
     return reply;
   };
@@ -74,7 +86,6 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
       headers: { "content-type": "application/json" },
       // Only the fields the desk takes: a wider brief would send the action's own bookkeeping, and count against the desk's byte limit.
       body: JSON.stringify({ title: brief.title, brief: brief.brief, levels: brief.levels }),
-      signal: AbortSignal.timeout(120_000),
     });
   } catch (error) {
     if (unrecorded) throw unrecorded.error;

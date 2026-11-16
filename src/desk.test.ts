@@ -1,3 +1,8 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
+
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
@@ -82,6 +87,38 @@ describe("post", () => {
       const { fetchImpl, seen } = desk(terms);
       await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow(/Nothing was charged/);
       expect(seen).toHaveLength(0);
+    }
+  });
+
+  it("times out the request carrying the payment on its own clock, started after the order is recorded", async () => {
+    const usdc = { scheme: "exact", network: base.network, amount: "1000000", asset: base.asset, payTo: base.payTo, maxTimeoutSeconds: 300, extra: { name: "USDC", version: "2" } };
+    const challenge = Buffer.from(JSON.stringify({ x402Version: 2, resource: { url: `${base.desk}/x402/tasks` }, accepts: [usdc] })).toString("base64");
+    const arrived: number[] = [];
+    // A desk that takes the signed payment and never answers.
+    const server = createServer((request, response) => {
+      if (!request.headers["payment-signature"]) return void response.writeHead(402, { "payment-required": challenge }).end("{}");
+      arrived.push(Date.now());
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const local = { ...base, desk: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+    let recorded: number | undefined;
+    const slow: Recorder = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      recorded = Date.now();
+    };
+    // A signal that only reaches the request through x402's clones is lost once they are collected.
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const collecting = setInterval(gc, 20);
+    try {
+      const posted = await post(local, account, units("1"), brief, slow, fetch, 200);
+      expect(posted.uncertain).toBe(true);
+      expect(arrived).toHaveLength(1);
+      expect(arrived[0]!).toBeGreaterThanOrEqual(recorded!);
+    } finally {
+      clearInterval(collecting);
+      server.closeAllConnections();
+      server.close();
     }
   });
 

@@ -61080,8 +61080,9 @@ function amount(value) {
 
 // src/desk.ts
 var MAX_TIMEOUT_SECONDS = 600;
+var REQUEST_TIMEOUT = 12e4;
 var same = (a, b) => a.toLowerCase() === b.toLowerCase();
-async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetch) {
+async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetch, timeout = REQUEST_TIMEOUT) {
   let signed;
   let unrecorded;
   let price = maxPrice;
@@ -61109,7 +61110,7 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
         throw error64;
       }
     }
-    const reply2 = await fetchImpl(input2, init);
+    const reply2 = await fetchImpl(input2, { ...init, signal: AbortSignal.timeout(timeout) });
     if (reply2.status === 402) asked = challengePrice(reply2, preset2);
     return reply2;
   };
@@ -61119,8 +61120,7 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
       method: "POST",
       headers: { "content-type": "application/json" },
       // Only the fields the desk takes: a wider brief would send the action's own bookkeeping, and count against the desk's byte limit.
-      body: JSON.stringify({ title: brief.title, brief: brief.brief, levels: brief.levels }),
-      signal: AbortSignal.timeout(12e4)
+      body: JSON.stringify({ title: brief.title, brief: brief.brief, levels: brief.levels })
     });
   } catch (error64) {
     if (unrecorded) throw unrecorded.error;
