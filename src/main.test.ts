@@ -248,7 +248,7 @@ describe("paying once per commit", () => {
     const legacy = statusComment("BrainChain is reviewing aaaaaaa.", { commit: SHA });
     gh.comments = [{ id: 1, login: "github-actions[bot]", body: legacy }];
     await expect(go()).rejects.toThrow(
-      `The comment on the pull request names aaaaaaa but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset("testnet", "base").desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
+      `The comment on the pull request names aaaaaaa but no order. An earlier run wrote it before paying and recorded no order after it, so this commit may already be paid for. This run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset("testnet", "base").desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
     );
     expect(desk.post).not.toHaveBeenCalled();
     expect(desk.quote).not.toHaveBeenCalled();

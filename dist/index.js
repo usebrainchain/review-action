@@ -61515,7 +61515,7 @@ async function run() {
     info(`This commit was paid for already, as order ${posted.order}. Waiting on that order; nothing more is paid.`);
   } else if (mine?.body && orderless(mine.body) === head) {
     throw new Error(
-      `The comment on the pull request names ${short} but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset2.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`
+      `The comment on the pull request names ${short} but no order. An earlier run wrote it before paying and recorded no order after it, so this commit may already be paid for. This run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset2.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`
     );
   } else {
     const text = await diff(token, repo, pr.number);
@@ -61662,9 +61662,9 @@ async function run() {
     case "waiting":
       if (outcome.state === "unknown") {
         const lost = posted.uncertain ? ", but its confirmation was lost," : "";
-        const check3 = (where) => `Look up ${account.address} in a ${preset2.chain} block explorer. If its ${preset2.token} transfers show the payment, write to hello@usebrainchain.com with the order id. If they show none ten minutes after the payment was signed, nothing was charged: delete ${where} and re-run the job.`;
-        if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${check3("this comment")}`, paid));
-        throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${check3("the comment on the pull request")}`);
+        const advice = (where) => `Look up ${account.address} in a ${preset2.chain} block explorer. If its ${preset2.token} transfers show the payment, write to hello@usebrainchain.com with the order id. If they show none ten minutes after the payment was signed, nothing was charged: delete ${where} and re-run the job.`;
+        if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${advice("this comment")}`, paid));
+        throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${advice("the comment on the pull request")}`);
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once BrainChain accepts it, without paying again.`, paid));
       warning(

@@ -199,7 +199,7 @@ export async function run(): Promise<void> {
   } else if (mine?.body && orderless(mine.body) === head) {
     // Runs before 1.4.4 named the commit before paying and the order only after. This comment may hide a payment.
     throw new Error(
-      `The comment on the pull request names ${short} but no order: an earlier run wrote it before paying and did not record the order after, so this commit may be paid for already, and this run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
+      `The comment on the pull request names ${short} but no order. An earlier run wrote it before paying and recorded no order after it, so this commit may already be paid for. This run pays nothing. Find the order id on the "Paid" line of the earlier run's log and follow it at ${preset.desk}/x402/tasks/<order id>, or delete the comment and re-run the job to pay for a new review.`,
     );
   } else {
     const text = await diff(token, repo, pr.number);
@@ -369,10 +369,10 @@ export async function run(): Promise<void> {
     case "waiting":
       if (outcome.state === "unknown") {
         const lost = posted.uncertain ? ", but its confirmation was lost," : "";
-        const check = (where: string) =>
+        const advice = (where: string) =>
           `Look up ${account.address} in a ${preset.chain} block explorer. If its ${preset.token} transfers show the payment, write to hello@usebrainchain.com with the order id. If they show none ten minutes after the payment was signed, nothing was charged: delete ${where} and re-run the job.`;
-        if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${check("this comment")}`, paid));
-        throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${check("the comment on the pull request")}`);
+        if (!superseded) await update(keep(`The payment for the review of ${short} was signed as order \`${posted.order}\`${lost} and BrainChain has no record of it. ${advice("this comment")}`, paid));
+        throw new Error(`The payment was signed as order ${posted.order}${lost} and BrainChain has no record of it. ${advice("the comment on the pull request")}`);
       }
       if (!superseded) await update(keep(`The review of ${short} is taking longer than this job waits for it. Re-running the job posts it once BrainChain accepts it, without paying again.`, paid));
       core.warning(
