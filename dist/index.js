@@ -61589,7 +61589,7 @@ async function run() {
         notice(`The pull request moved on to ${newer.slice(0, 7)} while this review ran, so the review of ${short} is kept in this job's summary and the comment is left to the newer commit.`);
         return;
       }
-      const url2 = await comment(token, repo, pr.number, body, mine).then(
+      const url2 = await save(body).then(
         (posting) => posting.html_url,
         (error63) => {
           if (summarized) setOutput("accepted", "true");

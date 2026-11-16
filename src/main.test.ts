@@ -314,6 +314,16 @@ describe("paying once per commit", () => {
     expect(desk.check).not.toHaveBeenCalled();
   });
 
+  it("tries posting the accepted review again when GitHub fails", async () => {
+    desk.check.mockImplementation(async () => {
+      gh.patchStatus = [502];
+      return { kind: "accepted", taskId: "4", review: "Looks correct." };
+    });
+    await go();
+    expect(state.log.slice(-3)).toEqual(["edit refused 502", "edit ### BrainChain review", "output accepted=true"]);
+    expect(gh.comments[0]!.body).toContain("Looks correct.");
+  });
+
   it("follows the recorded order on a re-run and pays nothing", async () => {
     gh.comments = [{ id: 1, login: "github-actions[bot]", body: statusComment("BrainChain is reviewing aaaaaaa.", PAID) }];
     desk.check.mockResolvedValue({ kind: "rejected", taskId: "4" });

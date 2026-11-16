@@ -296,7 +296,7 @@ export async function run(): Promise<void> {
         core.notice(`The pull request moved on to ${newer!.slice(0, 7)} while this review ran, so the review of ${short} is kept in this job's summary and the comment is left to the newer commit.`);
         return;
       }
-      const url = await comment(token, repo, pr.number, body, mine).then(
+      const url = await save(body).then(
         (posting) => posting.html_url,
         (error: unknown) => {
           if (summarized) core.setOutput("accepted", "true");
