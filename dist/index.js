@@ -29710,17 +29710,6 @@ function getInput(name, options) {
   }
   return val.trim();
 }
-function getBooleanInput(name, options) {
-  const trueValue = ["true", "True", "TRUE"];
-  const falseValue = ["false", "False", "FALSE"];
-  const val = getInput(name, options);
-  if (trueValue.includes(val))
-    return true;
-  if (falseValue.includes(val))
-    return false;
-  throw new TypeError(`Input does not meet YAML 1.2 "Core Schema" specification: ${name}
-Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
-}
 function setOutput(name, value) {
   const filePath = process.env["GITHUB_OUTPUT"] || "";
   if (filePath) {
@@ -61399,6 +61388,12 @@ function failure2(error63) {
   const reason2 = cause.message || (cause instanceof AggregateError ? cause.errors.map(String).join("; ") : "");
   return reason2 && !message.includes(reason2) ? `${message} (${reason2})` : message;
 }
+function flag(name) {
+  const value = getInput(name);
+  if (/^true$/i.test(value)) return true;
+  if (!value || /^false$/i.test(value)) return false;
+  throw new Error(`${name} must be true or false, not "${value}".`);
+}
 async function checkFunds(preset2, owner, maxPrice) {
   const reader = createPublicClient({ transport: http(preset2.rpc, { timeout: 15e3, retryCount: 2 }) });
   const read = (what, call3) => call3.catch((error63) => {
@@ -61425,11 +61420,12 @@ async function run() {
   const eventName = process.env.GITHUB_EVENT_NAME;
   const pr = path && (eventName === "pull_request" || eventName === "pull_request_target") ? JSON.parse(readFileSync(path, "utf8")).pull_request : void 0;
   if (!pr) throw new Error("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
+  const reviewBots = flag("review-bots");
   if (pr.draft) {
     notice("Draft pull request: no review was paid for.");
     return;
   }
-  if (pr.user?.type === "Bot" && !getBooleanInput("review-bots")) {
+  if (pr.user?.type === "Bot" && !reviewBots) {
     notice(`Pull request opened by ${pr.user.login ?? "a bot"}: no review was paid for. Set review-bots to true to review these.`);
     return;
   }

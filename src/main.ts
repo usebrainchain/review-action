@@ -41,6 +41,14 @@ export function failure(error: unknown): string {
   return reason && !message.includes(reason) ? `${message} (${reason})` : message;
 }
 
+/** core.getBooleanInput answers "yes" with a YAML schema error that does not say what to write instead. */
+function flag(name: string): boolean {
+  const value = core.getInput(name);
+  if (/^true$/i.test(value)) return true;
+  if (!value || /^false$/i.test(value)) return false;
+  throw new Error(`${name} must be true or false, not "${value}".`);
+}
+
 /** A read that fails only warns: BrainChain refuses a payment the wallet cannot cover before it settles. */
 async function checkFunds(preset: Preset, owner: `0x${string}`, maxPrice: bigint): Promise<void> {
   const reader = createPublicClient({ transport: http(preset.rpc, { timeout: 15_000, retryCount: 2 }) });
@@ -71,11 +79,12 @@ export async function run(): Promise<void> {
   const eventName = process.env.GITHUB_EVENT_NAME;
   const pr = path && (eventName === "pull_request" || eventName === "pull_request_target") ? (JSON.parse(readFileSync(path, "utf8")) as PullRequestEvent).pull_request : undefined;
   if (!pr) throw new Error("Run this action in a GitHub workflow, on pull_request or pull_request_target events.");
+  const reviewBots = flag("review-bots");
   if (pr.draft) {
     core.notice("Draft pull request: no review was paid for.");
     return;
   }
-  if (pr.user?.type === "Bot" && !core.getBooleanInput("review-bots")) {
+  if (pr.user?.type === "Bot" && !reviewBots) {
     core.notice(`Pull request opened by ${pr.user.login ?? "a bot"}: no review was paid for. Set review-bots to true to review these.`);
     return;
   }

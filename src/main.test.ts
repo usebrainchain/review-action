@@ -23,7 +23,6 @@ const desk = vi.hoisted(() => ({ post: vi.fn(), check: vi.fn(), quote: vi.fn() }
 
 vi.mock("@actions/core", () => ({
   getInput: (name: string) => state.inputs[name] ?? "",
-  getBooleanInput: (name: string) => state.inputs[name] === "true",
   setSecret: () => undefined,
   info: (message: string) => state.infos.push(message),
   notice: (message: string) => state.notices.push(message),
@@ -576,6 +575,18 @@ describe("skipping without payment", () => {
     expect(desk.post).not.toHaveBeenCalled();
     state.inputs["review-bots"] = "true";
     await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes review-bots as true or false in any casing, and names the input on anything else", async () => {
+    event({ user: { login: "dependabot[bot]", type: "Bot" } });
+    state.inputs["review-bots"] = "TRUE";
+    await go();
+    expect(desk.post).toHaveBeenCalledTimes(1);
+    for (const value of ["yes", "1"]) {
+      state.inputs["review-bots"] = value;
+      await expect(go()).rejects.toThrow(`review-bots must be true or false, not "${value}".`);
+    }
     expect(desk.post).toHaveBeenCalledTimes(1);
   });
 
