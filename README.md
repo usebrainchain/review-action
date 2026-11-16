@@ -110,7 +110,7 @@ The action pays nothing, and says why in the job log, for:
 
 ## Versions
 
-`@v1` always points at the latest 1.x release. To pin one release exactly, use its full commit SHA with the version as a comment, for example `usebrainchain/review-action@<commit SHA> # v1.4.4`. Dependabot's `github-actions` updates keep either form current. Each release is listed on the [releases page](https://github.com/usebrainchain/review-action/releases).
+`@v1` always points at the latest 1.x release. To pin one release exactly, use its full commit SHA with the version as a comment, for example `usebrainchain/review-action@<commit SHA> # v1.5.0`. Dependabot's `github-actions` updates keep either form current. Each release is listed on the [releases page](https://github.com/usebrainchain/review-action/releases).
 
 ## Security
 
