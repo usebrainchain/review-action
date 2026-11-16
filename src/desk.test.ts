@@ -49,6 +49,20 @@ describe("post", () => {
     expect(posted.order).toBe(orderId(seen[0]!));
   });
 
+  it("sends the desk the title, brief and levels only", async () => {
+    const { fetchImpl } = desk();
+    const sent: unknown[] = [];
+    const reading = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      sent.push(await request.clone().json());
+      return fetchImpl(request);
+    }) as typeof fetch;
+    const wide = { ...brief, skipped: ["yarn.lock"], truncated: false, reviewable: true, files: ["src/a.ts"], context: 20 };
+    await post(base, account, units("1"), wide, kept, reading);
+    expect(sent).toHaveLength(2);
+    for (const body of sent) expect(body).toStrictEqual(brief);
+  });
+
   it("sends nothing, and throws the recorder's error, when the order cannot be recorded", async () => {
     const { fetchImpl, seen } = desk();
     const refused = new Error("GitHub did not save the comment that records the order, so the payment was not sent and no review was paid for.");

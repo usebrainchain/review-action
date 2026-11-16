@@ -61103,7 +61103,8 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
     response = await wrapFetchWithPayment(observed, client)(`${preset2.desk}/x402/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(brief),
+      // Only the fields the desk takes: a wider brief would send the action's own bookkeeping, and count against the desk's byte limit.
+      body: JSON.stringify({ title: brief.title, brief: brief.brief, levels: brief.levels }),
       signal: AbortSignal.timeout(12e4)
     });
   } catch (error64) {

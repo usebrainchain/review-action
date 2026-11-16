@@ -72,7 +72,8 @@ export async function post(preset: Preset, account: PrivateKeyAccount, maxPrice:
     response = await wrapFetchWithPayment(observed, client)(`${preset.desk}/x402/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(brief),
+      // Only the fields the desk takes: a wider brief would send the action's own bookkeeping, and count against the desk's byte limit.
+      body: JSON.stringify({ title: brief.title, brief: brief.brief, levels: brief.levels }),
       signal: AbortSignal.timeout(120_000),
     });
   } catch (error) {
