@@ -80,19 +80,20 @@ export interface IssueComment {
 }
 
 /**
- * The newest comment starting with the marker that this action's identity left:
- * `login` for a person's token, otherwise any bot, since an App's own login
- * cannot be read with its token. The comment records what was paid for, so
- * comments by anyone else are ignored.
+ * The comments starting with the marker that this action's identity may have
+ * left, oldest first: `login`'s for a person's token, otherwise any bot's, since
+ * an App's own login cannot be read with its token. Comments by people are
+ * ignored. Without a login another App's comments are among them, so the caller
+ * must not take the newest for its own.
  */
-export async function ownComment(token: string, repo: string, number: number, login: string | undefined, marker: string): Promise<IssueComment | undefined> {
-  let newest: IssueComment | undefined;
+export async function ownComments(token: string, repo: string, number: number, login: string | undefined, marker: string): Promise<IssueComment[]> {
+  const found: IssueComment[] = [];
   for (let page = 1; page <= 10; page++) {
     const comments = (await (await call(token, `/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`)).json()) as IssueComment[];
-    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) newest = c;
+    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) found.push(c);
     if (comments.length < 100) break;
   }
-  return newest;
+  return found;
 }
 
 export async function comment(token: string, repo: string, number: number, body: string, earlier?: { id: number }): Promise<IssueComment> {

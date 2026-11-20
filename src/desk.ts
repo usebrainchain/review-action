@@ -6,6 +6,9 @@ import { keccak256, toBytes, type PrivateKeyAccount } from "viem";
 import { amount, type Preset } from "./presets.js";
 
 const MAX_TIMEOUT_SECONDS = 600;
+// The terms are decoded without a schema, and x402 adds the lifetime to the clock: a string "600" would pass a plain
+// comparison and then be appended as digits, an authorization that never lapses.
+const lapsesInTime = (seconds: unknown): boolean => Number.isSafeInteger(seconds) && (seconds as number) > 0 && (seconds as number) <= MAX_TIMEOUT_SECONDS;
 /** How long each request to the desk may take, the one carrying the payment included. */
 const REQUEST_TIMEOUT = 120_000;
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -51,7 +54,7 @@ export async function post(
     spendControls: { allowedAssets: [{ network: preset.network, asset: preset.asset, maxAmountPerPayment: maxPrice.toString() }] },
     policies: [
       (_version, requirements) =>
-        requirements.filter((r) => r.network === preset.network && same(r.asset, preset.asset) && same(r.payTo, preset.payTo) && r.maxTimeoutSeconds <= MAX_TIMEOUT_SECONDS),
+        requirements.filter((r) => r.network === preset.network && same(r.asset, preset.asset) && same(r.payTo, preset.payTo) && lapsesInTime(r.maxTimeoutSeconds)),
     ],
   });
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {

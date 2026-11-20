@@ -18,8 +18,8 @@ const brief = { title: "Review PR #1: x", brief: "Review it.", levels: ["a", "b"
 const kept: Recorder = async () => undefined;
 
 /** A desk offering USDG first and USDC second, as the real one does. */
-function desk(terms: { payTo?: string; amount?: string } = {}, paid: (payment: { payload: unknown; accepted?: { network?: string } }) => Response = (p) => Response.json({ order: orderId(p) }, { status: 202 })) {
-  const usdc = { scheme: "exact", network: base.network, amount: terms.amount ?? "1000000", asset: base.asset, payTo: terms.payTo ?? base.payTo, maxTimeoutSeconds: 300, extra: { name: "USDC", version: "2" } };
+function desk(terms: { payTo?: string; amount?: string; maxTimeoutSeconds?: unknown } = {}, paid: (payment: { payload: unknown; accepted?: { network?: string } }) => Response = (p) => Response.json({ order: orderId(p) }, { status: 202 })) {
+  const usdc = { scheme: "exact", network: base.network, amount: terms.amount ?? "1000000", asset: base.asset, payTo: terms.payTo ?? base.payTo, maxTimeoutSeconds: terms.maxTimeoutSeconds ?? 300, extra: { name: "USDC", version: "2" } };
   const usdg = { ...usdc, network: "eip155:46630", asset: "0x1eC185467cA2D5d1c24f0EdCB91301Bca4d0a787", extra: { assetTransferMethod: "permit2" } };
   const header = Buffer.from(JSON.stringify({ x402Version: 2, resource: { url: `${base.desk}/x402/tasks` }, accepts: [usdg, usdc] })).toString("base64");
   const seen: { payload: unknown; accepted?: { network?: string } }[] = [];
@@ -82,9 +82,10 @@ describe("post", () => {
     expect(recorded).toEqual([]);
   });
 
-  it("pays no one but the desk, and never above max-price", async () => {
-    for (const terms of [{ payTo: "0x000000000000000000000000000000000000dEaD" }, { amount: "2000000" }]) {
-      const { fetchImpl, seen } = desk(terms);
+  it("pays no one but the desk, never above max-price, and signs nothing that outlasts 600 seconds", async () => {
+    const terms = [{ payTo: "0x000000000000000000000000000000000000dEaD" }, { amount: "2000000" }, { maxTimeoutSeconds: 601 }, { maxTimeoutSeconds: "600" }, { maxTimeoutSeconds: 0 }];
+    for (const t of terms) {
+      const { fetchImpl, seen } = desk(t);
       await expect(post(base, account, units("1"), brief, kept, fetchImpl)).rejects.toThrow(/Nothing was charged/);
       expect(seen).toHaveLength(0);
     }
