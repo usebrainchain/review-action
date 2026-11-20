@@ -61069,6 +61069,7 @@ function amount(value) {
 
 // src/desk.ts
 var MAX_TIMEOUT_SECONDS = 600;
+var lapsesInTime = (seconds) => Number.isSafeInteger(seconds) && seconds > 0 && seconds <= MAX_TIMEOUT_SECONDS;
 var REQUEST_TIMEOUT = 12e4;
 var same = (a, b) => a.toLowerCase() === b.toLowerCase();
 async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetch, timeout = REQUEST_TIMEOUT) {
@@ -61080,7 +61081,7 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
     schemes: [{ network: preset2.network, client: new ExactEvmScheme(account) }],
     spendControls: { allowedAssets: [{ network: preset2.network, asset: preset2.asset, maxAmountPerPayment: maxPrice.toString() }] },
     policies: [
-      (_version, requirements) => requirements.filter((r) => r.network === preset2.network && same(r.asset, preset2.asset) && same(r.payTo, preset2.payTo) && r.maxTimeoutSeconds <= MAX_TIMEOUT_SECONDS)
+      (_version, requirements) => requirements.filter((r) => r.network === preset2.network && same(r.asset, preset2.asset) && same(r.payTo, preset2.payTo) && lapsesInTime(r.maxTimeoutSeconds))
     ]
   });
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {

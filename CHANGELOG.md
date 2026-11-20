@@ -4,6 +4,7 @@
 
 Payments:
 
+- A payment authorization is signed only when the desk's terms give its lifetime as a whole number of seconds up to 600. A lifetime sent as text no longer turns into one that never lapses.
 - With the workflow token or an App's token, a re-run no longer pays a second time for a commit when another App has posted a newer comment that starts with this action's marker. The action follows its own record of the commit wherever it sits among the bots' comments.
 
 ## 1.5.0
