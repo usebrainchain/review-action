@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comment, commenter, diff, fileAt, GitHubError, ownComment, remove } from "./github.js";
+import { comment, commenter, diff, fileAt, GitHubError, ownComments, remove } from "./github.js";
 
 const MARKER = "<!-- brainchain-review -->";
 
@@ -56,23 +56,23 @@ describe("comment", () => {
   });
 });
 
-describe("ownComment", () => {
+describe("ownComments", () => {
   const user = (login: string) => ({ login, type: login.endsWith("[bot]") ? "Bot" : "User" });
   const at = (id: number, body: string, login: string) => ({ id, body, html_url: "x", user: user(login) });
 
-  it("takes the newest comment by this login that starts with the marker, across pages", async () => {
+  it("lists this login's comments that start with the marker, oldest first, across pages", async () => {
     const first = Array.from({ length: 100 }, (_, i) => at(1000 + i, "chatter", "dev"));
     first[10] = at(10, `${MARKER}\nold`, "octo");
     const second = [at(20, `${MARKER}\nnewer`, "octo"), at(21, `${MARKER}\nby a bot`, "github-actions[bot]"), at(22, `quoting ${MARKER}`, "octo")];
     vi.stubGlobal("fetch", async (url: string) => Response.json(url.endsWith("&page=1") ? first : second));
-    expect((await ownComment("t", "acme/api", 3, "octo", MARKER))?.id).toBe(20);
-    expect(await ownComment("t", "acme/api", 3, "someone", MARKER)).toBeUndefined();
+    expect((await ownComments("t", "acme/api", 3, "octo", MARKER)).map((c) => c.id)).toEqual([10, 20]);
+    expect(await ownComments("t", "acme/api", 3, "someone", MARKER)).toEqual([]);
   });
 
-  it("takes the newest bot comment when the token's login is unknown, as with an App token", async () => {
+  it("lists every bot's marker comments when the token's login is unknown, as with an App token", async () => {
     const comments = [at(1, `${MARKER}\nold`, "github-actions[bot]"), at(2, `${MARKER}\nnewer`, "acme-reviews[bot]"), at(3, `${MARKER}\nby a person`, "mallory")];
     vi.stubGlobal("fetch", async () => Response.json(comments));
-    expect((await ownComment("t", "acme/api", 3, undefined, MARKER))?.id).toBe(2);
+    expect((await ownComments("t", "acme/api", 3, undefined, MARKER)).map((c) => c.id)).toEqual([1, 2]);
   });
 });
 
@@ -105,7 +105,7 @@ describe("errors", () => {
 
   it("say the github-token was rejected on a 401", async () => {
     github({ GET: () => new Response(JSON.stringify({ message: "Bad credentials", status: "401" }, null, 2), { status: 401 }) });
-    const error = (await ownComment("t", "acme/api", 3, undefined, MARKER).catch((e: unknown) => e)) as GitHubError;
+    const error = (await ownComments("t", "acme/api", 3, undefined, MARKER).catch((e: unknown) => e)) as GitHubError;
     expect(error.status).toBe(401);
     expect(error.message).toBe("The github-token was rejected: GitHub answered 401 for /repos/acme/api/issues/3/comments?per_page=100&page=1: Bad credentials");
   });

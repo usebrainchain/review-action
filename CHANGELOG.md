@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1
+
+Payments:
+
+- With the workflow token or an App's token, a re-run no longer pays a second time for a commit when another App has posted a newer comment that starts with this action's marker. The action follows its own record of the commit wherever it sits among the bots' comments.
+
 ## 1.5.0
 
 Two changes can turn a run red that used to pass. A private repository is no longer reviewed unless `review-private: true` is set: a review is a public BrainChain task, so the pull request's title, description and diff would be published. And a person's pull request now fails when `payer-key` is empty, instead of passing with no review; a bot's still only warns.
