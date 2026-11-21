@@ -61069,6 +61069,7 @@ function amount(value) {
 
 // src/desk.ts
 var MAX_TIMEOUT_SECONDS = 600;
+var lapsesInTime = (seconds) => Number.isSafeInteger(seconds) && seconds > 0 && seconds <= MAX_TIMEOUT_SECONDS;
 var REQUEST_TIMEOUT = 12e4;
 var same = (a, b) => a.toLowerCase() === b.toLowerCase();
 async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetch, timeout = REQUEST_TIMEOUT) {
@@ -61080,7 +61081,7 @@ async function post(preset2, account, maxPrice, brief, record2, fetchImpl = fetc
     schemes: [{ network: preset2.network, client: new ExactEvmScheme(account) }],
     spendControls: { allowedAssets: [{ network: preset2.network, asset: preset2.asset, maxAmountPerPayment: maxPrice.toString() }] },
     policies: [
-      (_version, requirements) => requirements.filter((r) => r.network === preset2.network && same(r.asset, preset2.asset) && same(r.payTo, preset2.payTo) && r.maxTimeoutSeconds <= MAX_TIMEOUT_SECONDS)
+      (_version, requirements) => requirements.filter((r) => r.network === preset2.network && same(r.asset, preset2.asset) && same(r.payTo, preset2.payTo) && lapsesInTime(r.maxTimeoutSeconds))
     ]
   });
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
@@ -61241,14 +61242,14 @@ async function commenter(token) {
     throw error63;
   }
 }
-async function ownComment(token, repo, number4, login, marker) {
-  let newest;
+async function ownComments(token, repo, number4, login, marker) {
+  const found = [];
   for (let page = 1; page <= 10; page++) {
     const comments = await (await call2(token, `/repos/${repo}/issues/${number4}/comments?per_page=100&page=${page}`)).json();
-    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) newest = c;
+    for (const c of comments) if ((login ? c.user?.login === login : c.user?.type === "Bot") && c.body?.startsWith(marker)) found.push(c);
     if (comments.length < 100) break;
   }
-  return newest;
+  return found;
 }
 async function comment(token, repo, number4, body, earlier) {
   if (earlier) {
@@ -61378,6 +61379,12 @@ function reviewComment(preset2, posted, outcome, commit) {
 var erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address, address) view returns (uint256)"]);
 var MAX_SOURCES = 20;
 var minutes = (n) => `${n} minute${n === 1 ? "" : "s"}`;
+function pick2(comments, head) {
+  const short = head.slice(0, 7);
+  const names = (body = "") => paidFor(body)?.commit === head || orderless(body) === head || reviewedCommit(body) === short;
+  for (let i = comments.length - 1; i >= 0; i--) if (names(comments[i].body)) return comments[i];
+  return comments.at(-1);
+}
 var ATTEMPTS = 3;
 var transient = (error63) => !(error63 instanceof GitHubError) || error63.status >= 500 || error63.status === 429;
 function failure2(error63) {
@@ -61472,7 +61479,8 @@ async function run() {
   const head = pr.head.sha;
   const short = head.slice(0, 7);
   const login = await commenter(token);
-  let mine = await ownComment(token, repo, pr.number, login, MARKER);
+  const ours = () => ownComments(token, repo, pr.number, login, MARKER).then((comments) => pick2(comments, head));
+  let mine = await ours();
   if (mine?.body && reviewedCommit(mine.body) === short) {
     const order = paidFor(shownReview(mine.body) ?? "")?.order;
     if (order) setOutput("order", order);
@@ -61489,7 +61497,7 @@ async function run() {
       } catch (error63) {
         if (!transient(error63)) throw error63;
         if (attempt < ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, attempt * 2e3));
-        if (!mine) mine = await ownComment(token, repo, pr.number, login, MARKER).catch(() => void 0);
+        if (!mine) mine = await ours().catch(() => void 0);
         if (attempt === ATTEMPTS) throw error63;
       }
     }
@@ -61611,7 +61619,7 @@ async function run() {
   if (outcome.kind !== "failed") setOutput("order", posted.order);
   if ("taskId" in outcome && outcome.taskId) setOutput("task-id", outcome.taskId);
   const paid = { order: posted.order, commit: head, price: posted.price };
-  const latest = await ownComment(token, repo, pr.number, login, MARKER).catch((error63) => {
+  const latest = await ours().catch((error63) => {
     warning(`Could not read the comment on the pull request again: ${failure2(error63)}`);
     return mine;
   });

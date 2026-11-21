@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recorder } from "./desk.js";
 import { failure, run } from "./main.js";
 import { preset } from "./presets.js";
-import { paidFor, reviewComment, shownReview, statusComment } from "./review.js";
+import { MARKER, paidFor, reviewComment, shownReview, statusComment } from "./review.js";
 
 const state = vi.hoisted(() => ({
   inputs: {} as Record<string, string>,
@@ -379,6 +379,27 @@ describe("paying once per commit", () => {
     gh.comments = [{ id: 1, login: author, body: statusComment("BrainChain is reviewing aaaaaaa.", PAID) }];
     await go();
     expect(desk.post).toHaveBeenCalledTimes(pays ? 1 : 0);
+  });
+
+  it("follows its record of this commit when another App's marker comment is newer, and pays nothing", async () => {
+    gh.comments = [
+      { id: 1, login: "github-actions[bot]", body: statusComment("BrainChain is reviewing aaaaaaa.", PAID) },
+      { id: 2, login: "acme-reviews[bot]", body: `${MARKER}\nAnother App's comment.` },
+    ];
+    desk.check.mockResolvedValue({ kind: "rejected", taskId: "4" });
+    await go();
+    expect(desk.post).not.toHaveBeenCalled();
+    expect(desk.check).toHaveBeenCalledWith(expect.anything(), ORDER);
+    expect(gh.comments[1]!.body).toBe(`${MARKER}\nAnother App's comment.`);
+  });
+
+  it("pays nothing for a commit whose review is on show, when another App's marker comment is newer", async () => {
+    gh.comments = [
+      { id: 1, login: "github-actions[bot]", body: reviewComment(preset("testnet", "base"), { order: ORDER, price: 1_000_000n, uncertain: false }, { kind: "accepted", review: "ok" }, SHA) },
+      { id: 2, login: "acme-reviews[bot]", body: statusComment("BrainChain is reviewing bbbbbbb.", { ...PAID, commit: "b".repeat(40) }) },
+    ];
+    await go();
+    expect(desk.post).not.toHaveBeenCalled();
   });
 
   it("fails before paying when GitHub does not say which login a person's token comments as", async () => {

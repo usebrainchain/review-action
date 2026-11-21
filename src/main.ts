@@ -6,7 +6,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import { buildBrief, printable } from "./brief.js";
 import { check, overPrice, post, quote, type Outcome, type Posted } from "./desk.js";
-import { comment, commenter, diff, fileAt, GitHubError, ownComment, pullRequest, remove, type IssueComment } from "./github.js";
+import { comment, commenter, diff, fileAt, GitHubError, ownComments, pullRequest, remove, type IssueComment } from "./github.js";
 import { amount, PERMIT2, preset as presetFor, units, type Preset } from "./presets.js";
 import { MARKER, orderless, paidFor, recordedCommit, reviewComment, reviewedCommit, sameCommit, shownReview, statusComment, type Paid } from "./review.js";
 
@@ -28,6 +28,17 @@ const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "f
 const MAX_SOURCES = 20;
 
 const minutes = (n: number) => `${n} minute${n === 1 ? "" : "s"}`;
+
+/**
+ * The comment a run works from: the newest that records or reviews `head`, else the newest. Without a login any
+ * bot's marker comment is a candidate, and another App's newer comment must not hide the order already paid for.
+ */
+export function pick(comments: IssueComment[], head: string): IssueComment | undefined {
+  const short = head.slice(0, 7);
+  const names = (body = "") => paidFor(body)?.commit === head || orderless(body) === head || reviewedCommit(body) === short;
+  for (let i = comments.length - 1; i >= 0; i--) if (names(comments[i]!.body)) return comments[i];
+  return comments.at(-1);
+}
 /** Times a comment write is tried when GitHub fails or does not answer. */
 const ATTEMPTS = 3;
 const transient = (error: unknown) => !(error instanceof GitHubError) || error.status >= 500 || error.status === 429;
@@ -140,7 +151,8 @@ export async function run(): Promise<void> {
 
   // This action's newest comment on the pull request records what was paid for which commit.
   const login = await commenter(token);
-  let mine: IssueComment | undefined = await ownComment(token, repo, pr.number, login, MARKER);
+  const ours = () => ownComments(token, repo, pr.number, login, MARKER).then((comments) => pick(comments, head));
+  let mine: IssueComment | undefined = await ours();
   if (mine?.body && reviewedCommit(mine.body) === short) {
     // The review on show may sit below a newer commit's status, whose record names that commit's order.
     const order = paidFor(shownReview(mine.body) ?? "")?.order;
@@ -164,7 +176,7 @@ export async function run(): Promise<void> {
         if (attempt < ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
         // GitHub may have saved a new comment without answering. Taking it up makes the retry edit it instead of
         // posting a second, and lets undo() remove it when the payment is not sent.
-        if (!mine) mine = await ownComment(token, repo, pr.number, login, MARKER).catch(() => undefined);
+        if (!mine) mine = await ours().catch(() => undefined);
         if (attempt === ATTEMPTS) throw error;
       }
     }
@@ -314,7 +326,7 @@ export async function run(): Promise<void> {
 
   const paid = { order: posted.order, commit: head, price: posted.price };
   // A run for a newer commit may have taken the comment over while this one waited; its record must stand.
-  const latest = await ownComment(token, repo, pr.number, login, MARKER).catch((error: unknown) => {
+  const latest = await ours().catch((error: unknown) => {
     core.warning(`Could not read the comment on the pull request again: ${failure(error)}`);
     return mine;
   });
