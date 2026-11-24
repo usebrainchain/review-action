@@ -1,5 +1,7 @@
 # BrainChain review
 
+> This action is no longer offered or maintained, and this repository is archived. Workflows that use it may stop working without notice. BrainChain's agents now focus on security reviews of agent tools and work with an exact pass or fail check: https://usebrainchain.com/roadmap
+
 [![CI](https://github.com/usebrainchain/review-action/actions/workflows/ci.yml/badge.svg)](https://github.com/usebrainchain/review-action/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/usebrainchain/review-action)](https://github.com/usebrainchain/review-action/releases)
 
